@@ -1,0 +1,8 @@
+# Build output
+bin/
+obj/
+publish/
+
+# Editor and tool state
+.vs/
+*.user

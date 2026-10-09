@@ -1,0 +1,73 @@
+<Application x:Class="RestoreWin10.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             ShutdownMode="OnExplicitShutdown">
+  <!-- Colours come from Personalization.cs (Windows' light/dark mode, accent colour, transparency) as application
+       resources, and are referenced dynamically so a change in Settings repaints everything at once. -->
+  <Application.Resources>
+    <!-- Windows 10 flyout menu -->
+    <Style TargetType="ContextMenu">
+      <Setter Property="HasDropShadow" Value="False"/>
+      <Setter Property="Foreground" Value="{DynamicResource MenuFg}"/>
+      <Setter Property="FontFamily" Value="Segoe UI"/>
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ContextMenu">
+            <Border Background="{DynamicResource MenuBg}" BorderBrush="{DynamicResource MenuBorder}" BorderThickness="1" Padding="0,4">
+              <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle"/>
+            </Border>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <Style TargetType="MenuItem">
+      <Setter Property="Foreground" Value="{DynamicResource MenuFg}"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="MenuItem">
+            <Grid SnapsToDevicePixels="True">
+              <Border x:Name="Bd" Background="Transparent" MinHeight="32" MinWidth="180">
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="32"/><ColumnDefinition Width="*"/><ColumnDefinition Width="28"/>
+                  </Grid.ColumnDefinitions>
+                  <ContentPresenter ContentSource="Icon" Width="16" Height="16" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                  <TextBlock x:Name="Chk" Text="&#xE73E;" FontFamily="Segoe MDL2 Assets" FontSize="12" Foreground="{TemplateBinding Foreground}"
+                             HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed"/>
+                  <ContentPresenter Grid.Column="1" ContentSource="Header" VerticalAlignment="Center" Margin="0,0,16,0"
+                                    TextElement.Foreground="{TemplateBinding Foreground}" RecognizesAccessKey="True"/>
+                  <TextBlock x:Name="Arrow" Grid.Column="2" Text="&#xE76C;" FontFamily="Segoe MDL2 Assets" FontSize="10" Foreground="{TemplateBinding Foreground}"
+                             HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed"/>
+                </Grid>
+              </Border>
+              <Popup x:Name="PART_Popup" Placement="Right" HorizontalOffset="-1" IsOpen="{TemplateBinding IsSubmenuOpen}"
+                     AllowsTransparency="True" Focusable="False" PopupAnimation="None">
+                <Border Background="{DynamicResource MenuBg}" BorderBrush="{DynamicResource MenuBorder}" BorderThickness="1" Padding="0,4">
+                  <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Cycle"/>
+                </Border>
+              </Popup>
+            </Grid>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsHighlighted" Value="True"><Setter TargetName="Bd" Property="Background" Value="{DynamicResource MenuHover}"/></Trigger>
+              <Trigger Property="IsChecked" Value="True"><Setter TargetName="Chk" Property="Visibility" Value="Visible"/></Trigger>
+              <Trigger Property="HasItems" Value="True"><Setter TargetName="Arrow" Property="Visibility" Value="Visible"/></Trigger>
+              <Trigger Property="IsEnabled" Value="False"><Setter Property="Foreground" Value="{DynamicResource MenuFgDisabled}"/></Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <Style TargetType="Separator">
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Separator">
+            <Rectangle Height="1" Fill="{DynamicResource MenuBorder}" Margin="8,3"/>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+  </Application.Resources>
+</Application>

@@ -1,0 +1,428 @@
+<Window x:Class="RestoreWin10.StartMenu"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:RestoreWin10"
+        SizeToContent="Width" Height="720" WindowStyle="None" ResizeMode="NoResize"
+        ShowInTaskbar="False" Topmost="True" ShowActivated="True" Visibility="Hidden"
+        Background="Transparent" UseLayoutRounding="True" TextOptions.TextFormattingMode="Display"
+        FontFamily="Segoe UI" Deactivated="OnDeactivated" PreviewKeyDown="OnKey">
+  <Window.Resources>
+    <!-- Colours (Fg, Hover, Press, FgDim, ...) are application resources that follow Windows' personalization. -->
+
+    <!-- Flat button used by the rail and tile-area controls -->
+    <Style x:Key="Flat" TargetType="Button">
+      <Setter Property="Foreground" Value="{DynamicResource Fg}"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Cursor" Value="Arrow"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="b" Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}">
+              <ContentPresenter HorizontalAlignment="Left" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="b" Property="Background" Value="{DynamicResource Hover}"/></Trigger>
+              <Trigger Property="IsPressed" Value="True"><Setter TargetName="b" Property="Background" Value="{DynamicResource Press}"/></Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- App list rows: apps, folders and letter headers highlight like Windows 10; "Most used" / "Recently added" are inert -->
+    <Style x:Key="RowItem" TargetType="ListBoxItem">
+      <Setter Property="Foreground" Value="{DynamicResource Fg}"/>
+      <Setter Property="IsEnabled" Value="{Binding IsInteractive}"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ListBoxItem">
+            <Border x:Name="b" Background="Transparent" Padding="0">
+              <ContentPresenter/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="b" Property="Background" Value="{DynamicResource Hover}"/></Trigger>
+              <Trigger Property="IsSelected" Value="True"><Setter TargetName="b" Property="Background" Value="{DynamicResource Selected}"/></Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- Windows 10 scrollbar: hidden until the pointer is over the list, a thin line then, and a full bar with arrows
+         while the pointer is on the bar itself. -->
+    <Style x:Key="ScrollArrow" TargetType="RepeatButton">
+      <Setter Property="Focusable" Value="False"/>
+      <Setter Property="Height" Value="14"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="RepeatButton">
+            <Border x:Name="b" Background="Transparent">
+              <TextBlock Text="{TemplateBinding Content}" FontFamily="Segoe MDL2 Assets" FontSize="7" Foreground="{DynamicResource FgDim}"
+                         HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="b" Property="Background" Value="{DynamicResource Hover}"/></Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <Style TargetType="ScrollBar">
+      <Setter Property="Width" Value="12"/>
+      <Setter Property="MinWidth" Value="12"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ScrollBar">
+            <Grid x:Name="Bar" Background="Transparent" Opacity="0">
+              <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+              <RepeatButton x:Name="Up" Grid.Row="0" Style="{StaticResource ScrollArrow}" Command="ScrollBar.LineUpCommand" Content="&#xE70E;" Visibility="Hidden"/>
+              <Track x:Name="PART_Track" Grid.Row="1" IsDirectionReversed="True">
+                <Track.DecreaseRepeatButton><RepeatButton Command="ScrollBar.PageUpCommand" Opacity="0" Focusable="False"/></Track.DecreaseRepeatButton>
+                <Track.IncreaseRepeatButton><RepeatButton Command="ScrollBar.PageDownCommand" Opacity="0" Focusable="False"/></Track.IncreaseRepeatButton>
+                <Track.Thumb>
+                  <Thumb>
+                    <Thumb.Template>
+                      <ControlTemplate TargetType="Thumb">
+                        <Border x:Name="T" Background="{DynamicResource FgFaint}" Width="2" HorizontalAlignment="Right" Margin="0,0,2,0" CornerRadius="1"/>
+                        <ControlTemplate.Triggers>
+                          <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=ScrollBar}}" Value="True">
+                            <Setter TargetName="T" Property="Width" Value="6"/>
+                            <Setter TargetName="T" Property="HorizontalAlignment" Value="Center"/>
+                            <Setter TargetName="T" Property="Margin" Value="0"/>
+                            <Setter TargetName="T" Property="CornerRadius" Value="3"/>
+                            <Setter TargetName="T" Property="Background" Value="{DynamicResource FgDim}"/>
+                          </DataTrigger>
+                        </ControlTemplate.Triggers>
+                      </ControlTemplate>
+                    </Thumb.Template>
+                  </Thumb>
+                </Track.Thumb>
+              </Track>
+              <RepeatButton x:Name="Down" Grid.Row="2" Style="{StaticResource ScrollArrow}" Command="ScrollBar.LineDownCommand" Content="&#xE70D;" Visibility="Hidden"/>
+            </Grid>
+            <ControlTemplate.Triggers>
+              <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=ScrollViewer}}" Value="True">
+                <Setter TargetName="Bar" Property="Opacity" Value="1"/>
+              </DataTrigger>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Bar" Property="Background" Value="{DynamicResource Hover}"/>
+                <Setter TargetName="Up" Property="Visibility" Value="Visible"/>
+                <Setter TargetName="Down" Property="Visibility" Value="Visible"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- One row: a header (letters open the A–Z grid), an app (indented inside an open folder), or a folder -->
+    <DataTemplate x:Key="RowTemplate">
+      <Grid>
+        <TextBlock Text="{Binding Header}" Foreground="{DynamicResource Fg}" FontSize="13" FontWeight="SemiBold" Margin="14,12,0,6">
+          <TextBlock.Style>
+            <Style TargetType="TextBlock"><Setter Property="Visibility" Value="Collapsed"/>
+              <Style.Triggers>
+                <DataTrigger Binding="{Binding IsHeader}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger>
+                <DataTrigger Binding="{Binding GlyphHeader}" Value="True"><Setter Property="FontFamily" Value="Segoe MDL2 Assets"/><Setter Property="FontWeight" Value="Normal"/></DataTrigger>
+              </Style.Triggers>
+            </Style>
+          </TextBlock.Style>
+        </TextBlock>
+        <StackPanel Orientation="Horizontal" Height="40">
+          <StackPanel.Style>
+            <Style TargetType="StackPanel"><Setter Property="Visibility" Value="Collapsed"/><Setter Property="Margin" Value="12,0,0,0"/>
+              <Style.Triggers>
+                <DataTrigger Binding="{Binding IsApp}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger>
+                <DataTrigger Binding="{Binding IsIndented}" Value="True"><Setter Property="Margin" Value="28,0,0,0"/></DataTrigger>
+              </Style.Triggers>
+            </Style>
+          </StackPanel.Style>
+          <Image Source="{Binding App.Icon}" Width="24" Height="24" Margin="0,0,12,0"/>
+          <TextBlock Text="{Binding App.Name}" FontSize="13" Foreground="{DynamicResource Fg}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="230"/>
+        </StackPanel>
+        <Grid Height="40" Margin="12,0,10,0">
+          <Grid.Style>
+            <Style TargetType="Grid"><Setter Property="Visibility" Value="Collapsed"/>
+              <Style.Triggers><DataTrigger Binding="{Binding IsFolder}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers>
+            </Style>
+          </Grid.Style>
+          <StackPanel Orientation="Horizontal">
+            <Image Source="{x:Static local:AppFolder.Icon}" Width="24" Height="24" Margin="0,0,12,0"/>
+            <TextBlock Text="{Binding Folder.Name}" FontSize="13" Foreground="{DynamicResource Fg}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="220"/>
+          </StackPanel>
+          <TextBlock HorizontalAlignment="Right" VerticalAlignment="Center" FontFamily="Segoe MDL2 Assets" FontSize="10" Foreground="{DynamicResource Fg}">
+            <TextBlock.Style>
+              <Style TargetType="TextBlock"><Setter Property="Text" Value="&#xE70D;"/>
+                <Style.Triggers><DataTrigger Binding="{Binding Folder.IsOpen}" Value="True"><Setter Property="Text" Value="&#xE70E;"/></DataTrigger></Style.Triggers>
+              </Style>
+            </TextBlock.Style>
+          </TextBlock>
+        </Grid>
+      </Grid>
+    </DataTemplate>
+
+    <!-- A key of the A–Z grid: dimmed and inert when nothing is listed under it -->
+    <Style x:Key="JumpKeyButton" TargetType="Button">
+      <Setter Property="Width" Value="56"/>
+      <Setter Property="Height" Value="56"/>
+      <Setter Property="Margin" Value="2"/>
+      <Setter Property="Foreground" Value="{DynamicResource Fg}"/>
+      <Setter Property="FontSize" Value="22"/>
+      <Setter Property="Focusable" Value="False"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="b" Background="Transparent" BorderBrush="Transparent" BorderThickness="1">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="b" Property="Background" Value="{DynamicResource Hover}"/>
+                <Setter TargetName="b" Property="BorderBrush" Value="{DynamicResource Stroke}"/>
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False"><Setter Property="Foreground" Value="{DynamicResource FgFaint}"/></Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <DataTemplate x:Key="TileTemplate">
+      <Border Width="{Binding Width}" Height="{Binding Height}"
+              Background="{DynamicResource TileBrush}" BorderThickness="2"
+              Cursor="Arrow" ToolTip="{Binding Name}"
+              PreviewMouseLeftButtonDown="OnTileDown" MouseRightButtonUp="OnTileRightClick">
+        <Border.Style>
+          <Style TargetType="Border">
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Style.Triggers>
+              <Trigger Property="IsMouseOver" Value="True"><Setter Property="BorderBrush" Value="{DynamicResource TileHoverBorder}"/></Trigger>
+              <DataTrigger Binding="{Binding IsOpen}" Value="True"><Setter Property="BorderBrush" Value="{DynamicResource TileHoverBorder}"/></DataTrigger>
+              <DataTrigger Binding="{Binding IsFolderTarget}" Value="True"><Setter Property="BorderBrush" Value="{DynamicResource Fg}"/></DataTrigger>
+              <DataTrigger Binding="{Binding IsDragging}" Value="True"><Setter Property="Opacity" Value="0"/></DataTrigger>
+            </Style.Triggers>
+          </Style>
+        </Border.Style>
+        <Grid>
+          <Image Source="{Binding Icon}" Width="{Binding IconSize}" Height="{Binding IconSize}" VerticalAlignment="Center" HorizontalAlignment="Center">
+            <Image.Style>
+              <Style TargetType="Image">
+                <Setter Property="Margin" Value="0"/>
+                <Style.Triggers>
+                  <DataTrigger Binding="{Binding ShowLabel}" Value="True"><Setter Property="Margin" Value="0,0,0,14"/></DataTrigger>
+                  <DataTrigger Binding="{Binding IsFolder}" Value="True"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger>
+                </Style.Triggers>
+              </Style>
+            </Image.Style>
+          </Image>
+          <!-- A folder tile: the first icons of its tiles, small, from the top left (Windows 10) -->
+          <ItemsControl ItemsSource="{Binding Preview}" Width="{Binding PreviewWidth}" HorizontalAlignment="Left" VerticalAlignment="Top"
+                        IsHitTestVisible="False" Focusable="False">
+            <ItemsControl.Style>
+              <Style TargetType="ItemsControl">
+                <Setter Property="Visibility" Value="Collapsed"/>
+                <Setter Property="Margin" Value="5,5,0,0"/>
+                <Style.Triggers>
+                  <DataTrigger Binding="{Binding IsFolder}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger>
+                  <DataTrigger Binding="{Binding Size}" Value="S"><Setter Property="Margin" Value="0"/></DataTrigger>
+                </Style.Triggers>
+              </Style>
+            </ItemsControl.Style>
+            <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <Image Source="{Binding}" Margin="3"
+                       Width="{Binding DataContext.PreviewIcon, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                       Height="{Binding DataContext.PreviewIcon, RelativeSource={RelativeSource AncestorType=ItemsControl}}"/>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+          <TextBlock Foreground="{DynamicResource TileFg}" FontSize="12" Margin="8,0,6,6" VerticalAlignment="Bottom" TextTrimming="CharacterEllipsis">
+            <TextBlock.Style>
+              <Style TargetType="TextBlock">
+                <Setter Property="Visibility" Value="Collapsed"/>
+                <Setter Property="Text" Value="{Binding Name}"/>
+                <Style.Triggers>
+                  <DataTrigger Binding="{Binding ShowLabel}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger>
+                  <DataTrigger Binding="{Binding IsFolder}" Value="True"><Setter Property="Text" Value="{Binding Folder.Name}"/></DataTrigger>
+                </Style.Triggers>
+              </Style>
+            </TextBlock.Style>
+          </TextBlock>
+        </Grid>
+      </Border>
+    </DataTemplate>
+
+    <!-- One group: a slot above it that turns into a new group when a tile is dropped there,
+         an editable name, and its tiles on the cell grid. -->
+    <DataTemplate x:Key="GroupTemplate">
+      <StackPanel>
+        <Grid x:Name="Zone" Tag="zone" Height="10" Background="Transparent">
+          <Rectangle x:Name="ZoneRect" Margin="0,2" Stroke="{DynamicResource Stroke}" StrokeDashArray="3 3" StrokeThickness="1"
+                     Fill="Transparent" Opacity="0" IsHitTestVisible="False"/>
+        </Grid>
+        <Border x:Name="GroupRoot" Tag="group" Background="Transparent" Padding="0,0,0,8">
+          <StackPanel>
+            <Grid Height="28" Margin="0,0,0,6" Width="300" HorizontalAlignment="Left">
+              <TextBlock x:Name="NamePlaceholder" Text="Name group" Foreground="{DynamicResource FgFaint}" FontSize="14" FontWeight="SemiBold"
+                         VerticalAlignment="Center" Margin="2,0,0,0" IsHitTestVisible="False" Visibility="Collapsed"/>
+              <TextBox Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" Background="Transparent" BorderThickness="0"
+                       Foreground="{DynamicResource Fg}" CaretBrush="{DynamicResource Fg}" FontSize="14" FontWeight="SemiBold" VerticalContentAlignment="Center"
+                       Padding="0" Margin="2,0,36,0" LostFocus="OnGroupNameLostFocus"/>
+              <!-- The handle Windows 10 shows on a group's header: drag it to move the whole group -->
+              <Border x:Name="Handle" HorizontalAlignment="Right" Width="32" Background="Transparent" Visibility="Hidden"
+                      PreviewMouseLeftButtonDown="OnGroupHandleDown" ToolTip="Drag to move this group">
+                <TextBlock Text="&#xE76F;" FontFamily="Segoe MDL2 Assets" FontSize="14" Foreground="{DynamicResource FgDim}"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+              </Border>
+            </Grid>
+            <Grid Width="300" HorizontalAlignment="Left">
+              <ItemsControl ItemsSource="{Binding Tiles}" ItemTemplate="{StaticResource TileTemplate}">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate><local:TilePanel/></ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+              </ItemsControl>
+              <!-- An open folder's tiles, in a band right below its row (the panel above moves the tiles under it down).
+                   Its height must stay TilePanel.BandChrome + the tiles: 6 + 30 + 4 + tiles + 8. -->
+              <Border x:Name="FolderBand" Tag="band" VerticalAlignment="Top" Margin="{Binding BandMargin}"
+                      Background="{DynamicResource FolderBandBg}" Padding="0,6,0,8">
+                <StackPanel>
+                  <Grid Height="30" Margin="6,0,6,4">
+                    <TextBlock x:Name="FolderPlaceholder" Text="Name folder" Foreground="{DynamicResource FgFaint}" FontSize="14" FontWeight="SemiBold"
+                               VerticalAlignment="Center" Margin="2,0,0,0" IsHitTestVisible="False" Visibility="Collapsed"/>
+                    <TextBox Text="{Binding OpenFolder.Folder.Name, UpdateSourceTrigger=PropertyChanged}" Background="Transparent" BorderThickness="0"
+                             Foreground="{DynamicResource Fg}" CaretBrush="{DynamicResource Fg}" FontSize="14" FontWeight="SemiBold"
+                             VerticalContentAlignment="Center" Padding="0" Margin="2,0,0,0" LostFocus="OnGroupNameLostFocus"/>
+                  </Grid>
+                  <ItemsControl ItemsSource="{Binding OpenFolder.Folder.Tiles}" ItemTemplate="{StaticResource TileTemplate}" HorizontalAlignment="Left">
+                    <ItemsControl.ItemsPanel>
+                      <ItemsPanelTemplate><local:TilePanel IsBand="True"/></ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                  </ItemsControl>
+                </StackPanel>
+              </Border>
+            </Grid>
+          </StackPanel>
+        </Border>
+      </StackPanel>
+      <DataTemplate.Triggers>
+        <DataTrigger Binding="{Binding ShowZone}" Value="True">
+          <Setter TargetName="ZoneRect" Property="Opacity" Value="1"/>
+          <DataTrigger.EnterActions><BeginStoryboard><Storyboard>
+            <DoubleAnimation Storyboard.TargetName="Zone" Storyboard.TargetProperty="Height" To="46" Duration="0:0:0.18"/>
+          </Storyboard></BeginStoryboard></DataTrigger.EnterActions>
+          <DataTrigger.ExitActions><BeginStoryboard><Storyboard>
+            <DoubleAnimation Storyboard.TargetName="Zone" Storyboard.TargetProperty="Height" To="10" Duration="0:0:0.15"/>
+          </Storyboard></BeginStoryboard></DataTrigger.ExitActions>
+        </DataTrigger>
+        <DataTrigger Binding="{Binding ZoneActive}" Value="True">
+          <Setter TargetName="ZoneRect" Property="Fill" Value="{DynamicResource Hover}"/>
+        </DataTrigger>
+        <MultiDataTrigger>
+          <MultiDataTrigger.Conditions>
+            <Condition Binding="{Binding Name}" Value=""/>
+            <Condition Binding="{Binding IsMouseOver, ElementName=GroupRoot}" Value="True"/>
+          </MultiDataTrigger.Conditions>
+          <Setter TargetName="NamePlaceholder" Property="Visibility" Value="Visible"/>
+        </MultiDataTrigger>
+        <DataTrigger Binding="{Binding IsMouseOver, ElementName=GroupRoot}" Value="True">
+          <Setter TargetName="Handle" Property="Visibility" Value="Visible"/>
+        </DataTrigger>
+        <DataTrigger Binding="{Binding IsMoving}" Value="True">
+          <Setter TargetName="Handle" Property="Visibility" Value="Visible"/>
+          <Setter TargetName="GroupRoot" Property="Opacity" Value="0.6"/>
+        </DataTrigger>
+        <DataTrigger Binding="{Binding OpenFolder}" Value="{x:Null}">
+          <Setter TargetName="FolderBand" Property="Visibility" Value="Collapsed"/>
+        </DataTrigger>
+        <DataTrigger Binding="{Binding OpenFolder.Folder.Name}" Value="">
+          <Setter TargetName="FolderPlaceholder" Property="Visibility" Value="Visible"/>
+        </DataTrigger>
+      </DataTemplate.Triggers>
+    </DataTemplate>
+  </Window.Resources>
+
+  <Grid x:Name="Root" Background="Transparent" MouseMove="OnRootMove" PreviewMouseWheel="OnRootWheel" PreviewMouseDown="OnRootPreviewDown">
+    <Grid.ColumnDefinitions>
+      <ColumnDefinition Width="48"/>
+      <ColumnDefinition Width="320"/>
+      <ColumnDefinition Width="324"/>
+    </Grid.ColumnDefinitions>
+
+    <!-- The left strip's own column (its collapsed width); the strip itself is drawn on top, see "Rail" below -->
+    <Border Grid.Column="0" Background="{DynamicResource RailBg}"/>
+
+    <!-- App list + search (blurred while the left strip is open over it, as in Windows 10) -->
+    <Grid x:Name="ListColumn" Grid.Column="1">
+      <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+      <ListBox x:Name="Apps" Background="Transparent" BorderThickness="0" Margin="0,4,0,0"
+               ItemTemplate="{StaticResource RowTemplate}" ItemContainerStyle="{StaticResource RowItem}"
+               ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+               VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
+               PreviewMouseLeftButtonDown="OnAppDown" PreviewMouseLeftButtonUp="OnAppClick" PreviewMouseRightButtonUp="OnAppRightClick"/>
+      <!-- The A–Z grid, in place of the list while it is open -->
+      <Grid x:Name="JumpGrid" Grid.Row="0" Background="Transparent" Visibility="Collapsed" MouseLeftButtonUp="OnJumpBackground">
+        <ItemsControl x:Name="JumpKeys" HorizontalAlignment="Center" VerticalAlignment="Center">
+          <ItemsControl.ItemsPanel><ItemsPanelTemplate><UniformGrid Columns="4"/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate>
+              <Button Style="{StaticResource JumpKeyButton}" Tag="{Binding Key}" IsEnabled="{Binding Enabled}" Click="OnJumpKey">
+                <TextBlock x:Name="t" Text="{Binding Text}"/>
+              </Button>
+              <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding Glyph}" Value="True">
+                  <Setter TargetName="t" Property="FontFamily" Value="Segoe MDL2 Assets"/>
+                  <Setter TargetName="t" Property="FontSize" Value="20"/>
+                </DataTrigger>
+              </DataTemplate.Triggers>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </Grid>
+      <Border x:Name="SearchBar" Grid.Row="1" Background="#E6F2F2F2" Height="40" Margin="0">
+        <Grid>
+          <TextBlock x:Name="Hint" Text="Type here to search" Foreground="#FF555555" FontSize="14" VerticalAlignment="Center" Margin="14,0,0,0" IsHitTestVisible="False"/>
+          <TextBox x:Name="Search" Background="Transparent" BorderThickness="0" Foreground="Black"
+                   CaretBrush="Black" FontSize="14" VerticalContentAlignment="Center" Padding="10,0" TextChanged="OnSearchChanged"/>
+        </Grid>
+      </Border>
+    </Grid>
+
+    <!-- Tiles -->
+    <ScrollViewer x:Name="TilesArea" Grid.Column="2" VerticalScrollBarVisibility="Auto" Padding="12,4,0,0">
+      <StackPanel>
+        <ItemsControl x:Name="Groups" ItemTemplate="{StaticResource GroupTemplate}"/>
+        <!-- Slot below the last group; grows while dragging so a tile can be dropped to start a new group. -->
+        <Grid x:Name="EndZone" Tag="zoneEnd" Height="0" Background="Transparent" Margin="0,0,0,24">
+          <Rectangle x:Name="EndZoneRect" Margin="0,2" Stroke="{DynamicResource Stroke}" StrokeDashArray="3 3" StrokeThickness="1"
+                     Fill="Transparent" Opacity="0" IsHitTestVisible="False"/>
+        </Grid>
+        <TextBlock x:Name="EmptyTiles" Text="Right-click an app and choose Pin to Start." Foreground="{DynamicResource FgDim}"
+                   TextWrapping="Wrap" Margin="2,16,0,0" FontSize="12" Visibility="Collapsed"/>
+      </StackPanel>
+    </ScrollViewer>
+
+    <!-- Start's left strip (built in code). Collapsed it is 48 wide; opened (the hamburger, or resting the pointer on it)
+         it is drawn over the app list with its labels, as in Windows 10. The Power and account panels open inside it. -->
+    <Border x:Name="Rail" Grid.Column="0" Grid.ColumnSpan="2" HorizontalAlignment="Left" Width="48" ClipToBounds="True"
+            Panel.ZIndex="5" Background="Transparent" MouseEnter="OnRailEnter" MouseLeave="OnRailLeave">
+      <Grid>
+        <StackPanel x:Name="RailTop" VerticalAlignment="Top"/>
+        <StackPanel x:Name="RailBottom" VerticalAlignment="Bottom"/>
+        <Border x:Name="RailPanel" VerticalAlignment="Bottom" Visibility="Collapsed"
+                Background="{DynamicResource RailPanelBg}" BorderBrush="{DynamicResource RailPanelLine}" BorderThickness="0,1,0,1">
+          <StackPanel x:Name="RailPanelItems" Margin="0,4"/>
+        </Border>
+      </Grid>
+    </Border>
+
+    <!-- The free edge (top, or bottom when the bar is at the top): drag it to make the menu taller or shorter -->
+    <Border x:Name="ResizeGrip" Grid.ColumnSpan="3" Height="6" VerticalAlignment="Top" Background="Transparent" Cursor="SizeNS" Panel.ZIndex="6"
+            MouseLeftButtonDown="OnGripDown" MouseMove="OnGripMove" MouseLeftButtonUp="OnGripUp" LostMouseCapture="OnGripLost"/>
+
+    <!-- Drag ghost lives above everything -->
+    <Canvas x:Name="DragCanvas" Grid.ColumnSpan="3" IsHitTestVisible="False"/>
+  </Grid>
+</Window>

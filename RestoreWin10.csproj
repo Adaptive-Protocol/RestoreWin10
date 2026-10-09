@@ -1,0 +1,73 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+
+    <!-- Memory: workstation GC without the background GC thread, no PGO instrumentation, English resources only.
+         (InvariantGlobalization is NOT an option: WPF text input needs real cultures and crashes without them.) -->
+    <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
+    <TieredPGO>false</TieredPGO>
+    <!-- No tiered compilation: the precompiled (ReadyToRun) code is used as it is and never compiled a second time in
+         the background. Measured in Phase 7: about 5 MB less once Start has been used, and no 13 MB rise the first time
+         it opens. (What ReadyToRun did not precompile is compiled once, fully optimised.) -->
+    <TieredCompilation>false</TieredCompilation>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+
+    <!-- Publish precompiled (ReadyToRun) so little has to be JIT-compiled at startup; still framework-dependent. -->
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+
+    <!-- One file, the way StartAllBack ships one binary per role: publish\RestoreWin10.exe carries the program, its
+         settings (runtimeconfig) and its debug symbols (embedded, so crash.log keeps file and line numbers). -->
+    <PublishSingleFile>true</PublishSingleFile>
+    <DebugType>embedded</DebugType>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+
+    <!-- Security (threat model F-04, F-11):
+         - the exe finds .NET only in its system-wide location (C:\Program Files\dotnet): DOTNET_ROOT and stray
+           hostfxr.dll files next to the exe are ignored;
+         - stack traces in crash.log name source files relative to the project, not the build machine's folders. -->
+    <AppHostDotNetSearch>Global</AppHostDotNetSearch>
+    <PathMap>$(MSBuildProjectDirectory)=RestoreWin10</PathMap>
+    <!-- No .NET startup hooks: a DOTNET_STARTUP_HOOKS variable set for this account cannot load code into RestoreWin10,
+         including into the elevated setup step. -->
+    <StartupHookSupport>false</StartupHookSupport>
+    <!-- Program.Main handles setup before WPF loads, then starts App. -->
+    <StartupObject>RestoreWin10.Program</StartupObject>
+
+    <!-- Identity shown by Explorer, Task Manager and Settings -->
+    <ApplicationIcon>Assets\RestoreWin10.ico</ApplicationIcon>
+    <Product>RestoreWin10</Product>
+    <AssemblyTitle>RestoreWin10 - Windows 10 Start menu and taskbar</AssemblyTitle>
+    <Description>Windows 10 Start menu and taskbar for Windows 11</Description>
+    <Company>RestoreWin10</Company>
+    <Copyright>Copyright (c) 2026 RestoreWin10</Copyright>
+    <Version>2.0.0</Version>
+  </PropertyGroup>
+
+  <!-- Debug builds are development copies (Platform\Identity.cs): they run next to the installed RestoreWin10 and
+       never install themselves. -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
+    <DefineConstants>$(DefineConstants);DEV_BUILD</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Ask the GC to keep the heap compact (1 = least effort, 9 = most). -->
+    <RuntimeHostConfigurationOption Include="System.GC.ConserveMemory" Value="5" />
+    <!-- A ceiling for the managed heap: 64 MB. Without one the GC keeps up to ~25 MB of freed space committed for reuse
+         after busy moments (it sizes that from the CPU's cache); with it, ~14 MB (Phase 7 probe). The shell uses about
+         5 MB and at most ~11 MB measured, so the ceiling has about six times the headroom; reaching it would be an
+         out-of-memory failure, which is logged and the sign-in task restarts the shell. -->
+    <RuntimeHostConfigurationOption Include="System.GC.HeapHardLimit" Value="67108864" />
+    <!-- Use Windows' own globalization (NLS) instead of loading the ICU libraries; cultures keep working. -->
+    <RuntimeHostConfigurationOption Include="System.Globalization.UseNls" Value="true" />
+  </ItemGroup>
+</Project>
+
+
