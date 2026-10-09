@@ -103,7 +103,10 @@ Settings and diagnostics live in `%APPDATA%\RestoreWin10`: `state.json` (tiles, 
 * No network access at all
 
 Code comments refer to the findings of an internal threat-model review by ID (for example *F-09*, *V2-02*).
-To report a security problem, please open an issue (or use GitHub's private vulnerability reporting, if enabled).
+
+**Reporting a security problem:** please report it privately through
+[Security › Report a vulnerability](../../security/advisories/new), not as a public issue, so that it can be fixed
+before it becomes known. Use [issues](../../issues) for everything else.
 
 ## Building from source
 
