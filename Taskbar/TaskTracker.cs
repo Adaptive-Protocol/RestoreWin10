@@ -32,6 +32,12 @@ public sealed class TaskItem : Notifier, IDragItem
     public bool IsActive { get => _active; set => Set(ref _active, value); }
     public bool IsDragging { get => _dragging; set => Set(ref _dragging, value); }
 
+    /// <summary>A Store / packaged app: <see cref="Key"/> is its "shell:AppsFolder\…" id.</summary>
+    public bool IsStore => Key.StartsWith(Launcher.StorePrefix, StringComparison.OrdinalIgnoreCase);
+    /// <summary>What a pin of this button is saved as (an exe path or a Store app id), or null when it cannot be pinned
+    /// (a window we could not tie to a program, or a UWP window whose app is unknown).</summary>
+    public string? PinKey => IsStore || (ExePath != null && Key.Equals(ExePath, StringComparison.OrdinalIgnoreCase)) ? Key : null;
+
     public void SetWindows(List<nint> wins)
     {
         if (_windows.SequenceEqual(wins)) return;
@@ -56,6 +62,7 @@ public sealed class TaskTracker
     static readonly Dictionary<string, string> s_names = new(StringComparer.OrdinalIgnoreCase);
     static readonly uint s_ownPid = (uint)Environment.ProcessId;
     static readonly Dictionary<uint, string?> s_exeByPid = new();
+    static readonly Dictionary<uint, string?> s_appByPid = new();   // pid -> Store key of a packaged app's process, or null
     static readonly HashSet<uint> s_seenPids = new();
     static List<Win_>? s_snapshot;
     static long s_snapshotAt;
@@ -120,26 +127,77 @@ public sealed class TaskTracker
             if (pid == _ownPid) return true;
             _seenPids.Add(pid);
             if (!_exeByPid.TryGetValue(pid, out var exe)) _exeByPid[pid] = exe = Win.ExePath(pid);
-            // UWP windows are all hosted by one frame process; keep them as separate buttons.
+            if (!s_appByPid.TryGetValue(pid, out var app)) s_appByPid[pid] = app = StoreKey(Win.PackagedAumid(pid));
+            // UWP windows are all hosted by one frame process: each goes by the app it shows (its window's
+            // AppUserModelID), or failing that is a button of its own. A packaged app goes by its app id, which stays
+            // the same across its updates; its exe's folder does not.
+            bool frame = exe?.EndsWith("ApplicationFrameHost.exe", StringComparison.OrdinalIgnoreCase) == true;
             string key = exe == null ? $"pid:{pid}"
-                : exe.EndsWith("ApplicationFrameHost.exe", StringComparison.OrdinalIgnoreCase) ? $"{exe}|{h}" : exe;
+                : frame ? StoreKey(PropStore.WindowAumid(h)) ?? $"{exe}|{h}"
+                : app ?? exe;
             list.Add(new Win_(h, key, exe, title, Screens.HandleOf(h)));
             return true;
         }, 0);
-        foreach (var dead in _exeByPid.Keys.Where(p => !_seenPids.Contains(p)).ToList()) _exeByPid.Remove(dead);
+        foreach (var dead in _exeByPid.Keys.Where(p => !_seenPids.Contains(p)).ToList()) { _exeByPid.Remove(dead); s_appByPid.Remove(dead); }
         return list;
+    }
+
+    /// <summary>"shell:AppsFolder\&lt;AppUserModelID&gt;" for a Store app id that passes the launcher's checks, else null.</summary>
+    internal static string? StoreKey(string? aumid) =>
+        aumid is { Length: > 0 } && Launcher.IsLaunchable(Launcher.StorePrefix + aumid) ? Launcher.StorePrefix + aumid : null;
+
+    /// <summary>
+    /// The package family of an exe inside a packaged app's install folder, e.g.
+    /// "C:\Program Files\WindowsApps\Claude_2.31226.1.0_x64__pzs8sxrjxfjjc\app\claude.exe" → "Claude_pzs8sxrjxfjjc";
+    /// null for any other path. (The folder is Name_Version_Architecture_ResourceId_PublisherId.)
+    /// </summary>
+    internal static string? PackageFamilyOf(string path)
+    {
+        const string marker = @"\WindowsApps\";
+        int at = path.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+        if (at < 0) return null;
+        var rest = path[(at + marker.Length)..];
+        int slash = rest.IndexOf('\\');
+        var folder = slash > 0 ? rest[..slash] : rest;
+        var parts = folder.Split('_');
+        if (parts.Length != 5 || parts[0].Length == 0 || parts[4].Length == 0) return null;
+        return parts[0] + "_" + parts[4];
+    }
+
+    /// <summary>
+    /// A pin made by a packaged app's exe (as earlier versions did) becomes a pin by its app id, keeping its place:
+    /// <paramref name="exe"/> → <paramref name="key"/>. True when something changed.
+    /// </summary>
+    internal static bool RekeyPin(State state, string exe, string key)
+    {
+        var pins = state.TaskbarPins;
+        int i = pins.FindIndex(p => p.Equals(exe, StringComparison.OrdinalIgnoreCase));
+        if (i < 0) return false;
+        if (pins.Contains(key, StringComparer.OrdinalIgnoreCase)) pins.RemoveAt(i); else pins[i] = key;
+        state.TaskbarPinLaunch.Remove(exe);
+        int o = s_order.FindIndex(k => k.Equals(exe, StringComparison.OrdinalIgnoreCase));
+        if (o >= 0) { if (s_order.Contains(key, StringComparer.OrdinalIgnoreCase)) s_order.RemoveAt(o); else s_order[o] = key; }
+        return true;
     }
 
     static BitmapSource? IconFor(string? exe)
     {
         if (exe == null) return null;
-        if (!s_icons.TryGetValue(exe, out var ic)) s_icons[exe] = ic = IconHelper.FromFile(exe);
+        if (!s_icons.TryGetValue(exe, out var ic))
+            s_icons[exe] = ic = exe.StartsWith(Launcher.StorePrefix, StringComparison.OrdinalIgnoreCase)
+                ? new AppEntry { Path = exe }.Icon   // a Store app id: the Apps folder's own icon
+                : IconHelper.FromFile(exe);
         return ic;
     }
 
     static string NameFor(string? exe, string fallback)
     {
         if (exe == null) return fallback;
+        if (exe.StartsWith(Launcher.StorePrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            if (!s_names.TryGetValue(exe, out var sn)) s_names[exe] = sn = Shortcut.AppName(exe) ?? AppEntry.StoreDisplayName(exe);
+            return sn;
+        }
         if (!s_names.TryGetValue(exe, out var n))
         {
             try { var d = FileVersionInfo.GetVersionInfo(exe).FileDescription; n = string.IsNullOrWhiteSpace(d) ? Path.GetFileNameWithoutExtension(exe) : d; }
@@ -175,6 +233,16 @@ public sealed class TaskTracker
         // (Pins are seeded into the order in their saved sequence the first time round.) The order covers every
         // button on every bar, so it is kept up to date against everything that exists, not just this bar's share.
         var pins = _state.TaskbarPins;
+        // A packaged app pinned by its exe (pinned from its button by an earlier version) is pinned by its app id from
+        // now on, so the pin survives the app's next update.
+        if (_main && pins.Count > 0)
+        {
+            bool rekeyed = false;
+            foreach (var w in all)
+                if (w.Exe != null && w.Key.StartsWith(Launcher.StorePrefix, StringComparison.OrdinalIgnoreCase))
+                    rekeyed |= RekeyPin(_state, w.Exe, w.Key);
+            if (rekeyed) _state.Save();
+        }
         var allKeys = all.Select(w => w.Key).ToList();
         var present = new HashSet<string>(pins.Concat(allKeys), StringComparer.OrdinalIgnoreCase);
         s_order.RemoveAll(k => !present.Contains(k));
@@ -193,12 +261,14 @@ public sealed class TaskTracker
             if (at < 0)
             {
                 byKey.TryGetValue(key, out var w);
-                var exe = key.Contains('|') ? key[..key.IndexOf('|')] : key.StartsWith("pid:") ? null : key;
+                bool store = key.StartsWith(Launcher.StorePrefix, StringComparison.OrdinalIgnoreCase);
+                var exe = store ? w?.FirstOrDefault()?.Exe
+                        : key.Contains('|') ? key[..key.IndexOf('|')] : key.StartsWith("pid:") ? null : key;
                 Items.Insert(i, new TaskItem
                 {
-                    Key = key, ExePath = exe, Icon = IconFor(exe),
+                    Key = key, ExePath = exe, Icon = IconFor(store ? key : exe),
                     Name = _state.TaskbarPinLaunch.TryGetValue(key, out var lnk) ? Path.GetFileNameWithoutExtension(lnk)
-                                                                                  : NameFor(exe, w?.FirstOrDefault()?.Title ?? key),
+                                                                                  : NameFor(store ? key : exe, w?.FirstOrDefault()?.Title ?? key),
                 });
             }
             else if (at != i) Items.Move(at, i);

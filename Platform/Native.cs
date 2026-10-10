@@ -112,6 +112,27 @@ static class Win
         return sb.ToString();
     }
 
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] static extern int GetApplicationUserModelId(nint process, ref int length, StringBuilder? aumid);
+
+    /// <summary>
+    /// The AppUserModelID of a packaged app's process (Store apps, and desktop apps installed as packages, such as Claude),
+    /// or null for an ordinary program. Such an app's exe sits in a folder named after its version, which changes with
+    /// every update, so its taskbar button and pin go by this id instead.
+    /// </summary>
+    public static string? PackagedAumid(uint pid)
+    {
+        var h = OpenProcess(0x1000 /* QUERY_LIMITED_INFORMATION */, false, pid);
+        if (h == 0) return null;
+        try
+        {
+            int n = 0;
+            if (GetApplicationUserModelId(h, ref n, null) != 122 /* ERROR_INSUFFICIENT_BUFFER */ || n is <= 0 or > 512) return null;
+            var sb = new StringBuilder(n);
+            return GetApplicationUserModelId(h, ref n, sb) == 0 && sb.Length > 0 ? sb.ToString() : null;
+        }
+        finally { CloseHandle(h); }
+    }
+
     public static string? ExePath(uint pid)
     {
         var h = OpenProcess(0x1000 /* QUERY_LIMITED_INFORMATION */, false, pid);

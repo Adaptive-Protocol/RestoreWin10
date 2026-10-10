@@ -56,7 +56,8 @@ static class SelfTest
               { "Path": "https://example.com/x.exe", "Size": "M" },
               { "Path": "\\\\server\\share\\x.lnk", "Size": "Q" },
               { "Path": "shell:AppsFolder\\Microsoft.WindowsCalculator_8wekyb3d8bbwe!App", "Size": "Q" } ] } ],
-          "TaskbarPins": [ "C:\\Windows\\explorer.exe", "C:\\Tools\\evil.bat", "ftp://x/y.exe" ],
+          "TaskbarPins": [ "C:\\Windows\\explorer.exe", "C:\\Tools\\evil.bat", "ftp://x/y.exe",
+                           "shell:AppsFolder\\Microsoft.WindowsCalculator_8wekyb3d8bbwe!App", "shell:AppsFolder\\..\\x!y" ],
           "TaskbarPinLaunch": { "C:\\Windows\\explorer.exe": "C:\\Users\\a\\x.url", "C:\\Program Files\\A\\a.exe": "C:\\Users\\a\\a.lnk" },
           "Usage": { "C:\\ok.lnk": 3, "\\\\srv\\x.lnk": 2, "C:\\zero.lnk": 0 },
           "StartHeight": 7.5, "SearchMode": 9, "KeepBlueWhileAccent": "not-hex"
@@ -65,11 +66,26 @@ static class SelfTest
         var st = State.Parse(json, out var rejected);
         Check("tiles: 2 of 4 kept (local shortcut, Store id)", st.Groups.Single().Tiles.Count == 2);
         Check("tiles: unknown size becomes M", st.Groups.Single().Tiles.All(t => t.Size is "W" or "M"));
-        Check("taskbar pins: only the local program kept", st.TaskbarPins.SequenceEqual(new[] { @"C:\Windows\explorer.exe" }));
+        Check("taskbar pins: the local program and the Store app id kept",
+              st.TaskbarPins.SequenceEqual(new[] { @"C:\Windows\explorer.exe", @"shell:AppsFolder\Microsoft.WindowsCalculator_8wekyb3d8bbwe!App" }));
         Check("pin shortcuts: only the .lnk kept", st.TaskbarPinLaunch.Count == 1 && st.TaskbarPinLaunch.ContainsKey(@"C:\Program Files\A\a.exe"));
         Check("usage: network path and zero count left out", st.Usage.Count == 1 && st.Usage.ContainsKey(@"C:\ok.lnk"));
         Check("numbers brought into range", st.StartHeight == 0 && st.SearchMode == 2 && st.KeepBlueWhileAccent == null);
-        Check($"rejected list names what was left out ({rejected.Count})", rejected.Count == 6);
+        Check($"rejected list names what was left out ({rejected.Count})", rejected.Count == 7);
+
+        // ---- packaged apps on the taskbar (pinned by app id, not by their versioned exe) ----
+        Check("package family from a WindowsApps exe",
+              TaskTracker.PackageFamilyOf(@"C:\Program Files\WindowsApps\Example.App_2.1.0.0_x64__abcdefghjkmnp\app\example.exe") == "Example.App_abcdefghjkmnp");
+        Check("no package family for an ordinary program", TaskTracker.PackageFamilyOf(@"C:\Program Files\Example\example.exe") == null);
+        Check("no package family for an odd WindowsApps folder", TaskTracker.PackageFamilyOf(@"C:\Program Files\WindowsApps\odd\x.exe") == null);
+        Check("Store key from an app id", TaskTracker.StoreKey("Example.App_abcdefghjkmnp!App") == @"shell:AppsFolder\Example.App_abcdefghjkmnp!App");
+        Check("no Store key from a malformed id", TaskTracker.StoreKey(@"..\x") == null && TaskTracker.StoreKey(null) == null);
+        Check("this process is not a packaged app", Win.PackagedAumid((uint)Environment.ProcessId) == null);
+        var rk = State.Parse("""{ "TaskbarPins": [ "C:\\Windows\\explorer.exe", "C:\\Program Files\\WindowsApps\\Example.App_2.1.0.0_x64__abcdefghjkmnp\\app\\example.exe", "C:\\Windows\\notepad.exe" ] }""", out _);
+        bool moved = TaskTracker.RekeyPin(rk, @"C:\Program Files\WindowsApps\Example.App_2.1.0.0_x64__abcdefghjkmnp\app\example.exe", @"shell:AppsFolder\Example.App_abcdefghjkmnp!App");
+        Check("an old exe pin becomes the app id in the same place",
+              moved && rk.TaskbarPins.SequenceEqual(new[] { @"C:\Windows\explorer.exe", @"shell:AppsFolder\Example.App_abcdefghjkmnp!App", @"C:\Windows\notepad.exe" }));
+        Check("re-keying an exe that is not pinned changes nothing", !TaskTracker.RekeyPin(rk, @"C:\x\y.exe", @"shell:AppsFolder\A_b!C"));
 
         // ---- named objects ----
         string name = Identity.Name + ".SelfTest." + Environment.ProcessId;

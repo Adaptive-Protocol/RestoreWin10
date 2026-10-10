@@ -132,6 +132,8 @@ public sealed class State
         bool Ok(string? value, Func<string?, bool> test) { if (test(value)) return true; rejected.Add(value ?? "(empty)"); return false; }
         static bool Program(string? p) => Launcher.IsLocalPath(p) && p!.EndsWith(".exe", StringComparison.OrdinalIgnoreCase);
         static bool Shortcut(string? p) => Launcher.IsLocalPath(p) && p!.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase);
+        // A Store / packaged app pinned by its app id ("shell:AppsFolder\…!App"), checked like a tile's.
+        static bool StoreApp(string? p) => p != null && p.StartsWith(Launcher.StorePrefix, StringComparison.OrdinalIgnoreCase) && Launcher.IsLaunchable(p);
         static string Size(string? s) => s is "S" or "M" or "W" or "L" ? s : "M";
 
         // A folder keeps the app tiles in it that pass (folders do not nest). With one left it is that tile again; with
@@ -159,7 +161,7 @@ public sealed class State
         FirstSeen = new Dictionary<string, DateTime>(
             (FirstSeen ?? new()).Where(kv => Ok(kv.Key, Launcher.IsLaunchable)),
             StringComparer.OrdinalIgnoreCase);
-        TaskbarPins = (TaskbarPins ?? new()).Where(p => Ok(p, Program)).ToList();
+        TaskbarPins = (TaskbarPins ?? new()).Where(p => Ok(p, x => Program(x) || StoreApp(x))).ToList();
         TaskbarPinLaunch = new Dictionary<string, string>(
             (TaskbarPinLaunch ?? new()).Where(kv => Ok(kv.Key, Program) && Ok(kv.Value, Shortcut)),
             StringComparer.OrdinalIgnoreCase);   // paths compare case-insensitively

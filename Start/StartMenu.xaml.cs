@@ -881,10 +881,11 @@ public partial class StartMenu : Window
     /// <summary>The collection a tile sits in: its group's, or its folder's.</summary>
     IList<Tile>? HomeOf(Tile t) => (IList<Tile>?)GroupOf(t)?.Tiles ?? FolderTileOf(t)?.Folder!.Tiles;
 
-    /// <summary>"Pin to taskbar" / "Unpin from taskbar" for apps that start a real executable.</summary>
+    /// <summary>"Pin to taskbar" / "Unpin from taskbar" for apps that start a real executable, and for Store / packaged
+    /// apps (pinned by their app id, which survives their updates).</summary>
     MenuItem? TaskbarPinEntry(AppEntry a)
     {
-        var exe = a.TargetExe();
+        var exe = a.IsStore ? (Launcher.IsLaunchable(a.Path) ? a.Path : null) : a.TargetExe();
         if (exe == null) return null;
         bool pinned = _state.TaskbarPins.Contains(exe, StringComparer.OrdinalIgnoreCase);
         return MenuItemFor(pinned ? "Unpin from taskbar" : "Pin to taskbar", () =>

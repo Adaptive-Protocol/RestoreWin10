@@ -120,6 +120,18 @@ static class Shortcut
         return list;
     }
 
+    /// <summary>The name the Apps folder shows for a Store app id ("shell:AppsFolder\…!App"), or null.</summary>
+    public static string? AppName(string parsingName)
+    {
+        var iid = typeof(IShellItem).GUID;
+        try
+        {
+            if (SHCreateItemFromParsingName(parsingName, 0, ref iid, out var item) != 0) return null;
+            try { return Name(item, SigdnNormalDisplay); } finally { Marshal.ReleaseComObject(item); }
+        }
+        catch { return null; }
+    }
+
     static string? Name(IShellItem item, uint sigdn)
     {
         try

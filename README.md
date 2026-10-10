@@ -40,7 +40,8 @@ If RestoreWin10 is closed, Windows' own taskbar comes back. If it crashes, it is
   programs, two-line clock, notifications button and show-desktop strip
 * **Styles**: *Clear* (the wallpaper shows through), *Acrylic*, *Opaque* or *Normal* (follows Windows), from the
   taskbar's right-click menu; the normal look returns while Start, Search or Task View is open
-* **Program buttons**: your Windows taskbar pins carried over, live thumbnails, drag to reorder, attention flashing
+* **Program buttons**: your Windows taskbar pins carried over, live thumbnails, drag to reorder, attention flashing;
+  pin any app from Start, Store apps included (they are pinned by app ID, so the pin survives their updates)
 * **Jump lists**: pinned and recent items, File Explorer's pinned folders, and each program's own tasks
   (Firefox: *New private window*); every task shows what it runs
 * **Notification area**: program tray icons (with the `^` overflow as a square grid), volume flyout, network, and a
@@ -146,7 +147,6 @@ bin\Debug\net10.0-windows\RestoreWin10.exe --selftest
 
 * No notification count on the notifications button (Windows gives it only to packaged apps with a special permission)
 * System tray icons such as Bluetooth are not hosted; battery, sound and network are RestoreWin10's own
-* Store apps can be pinned to Start but not to the taskbar
 * The taskbar is always at the bottom and locked
 * Explorer's file-window ribbon cannot be restored without injecting into Explorer
 

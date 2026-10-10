@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.0.1 (2026-10-09)
+
+### Taskbar
+
+* Store and packaged apps (such as Claude) can be pinned to the taskbar from Start, from the app list and from tiles
+* Their buttons and pins go by the app's ID instead of the program file inside its version-named folder, so a pin
+  keeps working after the app updates, and a pinned Store app starts the way Windows starts it
+* Pins of such apps made by earlier versions are converted automatically and keep their place
+
 ## 2.0.0 (2026-10-09)
 
 First public release: a rebuild of RestoreWin10 1.x on .NET 10, based on a threat-model review.

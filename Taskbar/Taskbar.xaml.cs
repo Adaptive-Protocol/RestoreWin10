@@ -105,6 +105,7 @@ public partial class Taskbar : Window
         {
             SeedPins();
             if (!State.Shared.WindowsPinsImported) ImportWindowsPins(interactive: false);   // carry the Windows taskbar's pins over, once
+            RekeyPackagedPins();
         }
         ApplyBarSettings();
         Personalization.OptionsChanged += ApplyBarSettings;   // Settings > Personalization > Taskbar, or our own menu
@@ -475,6 +476,33 @@ public partial class Taskbar : Window
                 if (File.Exists(p)) st.TaskbarPins.Add(p);
         st.TaskbarSeeded = true;
         st.Save();
+    }
+
+    /// <summary>
+    /// Pins of a packaged app's exe (earlier versions pinned a running Store app by its exe, whose folder is named after
+    /// the version and goes away at the app's next update) become pins of its app id. Running apps are handled by the
+    /// tracker as soon as they are seen; this covers the ones that are not running, looked up in the Apps folder in the
+    /// background (that enumeration can take seconds). A package with several apps is left alone rather than guessed.
+    /// </summary>
+    void RekeyPackagedPins()
+    {
+        var old = State.Shared.TaskbarPins.Select(p => (Exe: p, Family: TaskTracker.PackageFamilyOf(p)))
+                                          .Where(x => x.Family != null).ToList();
+        if (old.Count == 0) return;
+        Task.Run(() =>
+        {
+            var ids = AppEntry.ScanStoreApps().Select(a => a.Path).ToList();
+            Dispatcher.BeginInvoke(() =>
+            {
+                bool changed = false;
+                foreach (var (exe, family) in old)
+                {
+                    var matches = ids.Where(k => k.StartsWith(Launcher.StorePrefix + family + "!", StringComparison.OrdinalIgnoreCase)).ToList();
+                    if (matches.Count == 1) changed |= TaskTracker.RekeyPin(State.Shared, exe, matches[0]);
+                }
+                if (changed) { State.Shared.Save(); _tracker.Refresh(); }
+            });
+        });
     }
 
     /// <summary>Replaces the pins with what is pinned to the Windows taskbar, in the same left-to-right order.</summary>
@@ -1061,6 +1089,7 @@ public partial class Taskbar : Window
 
     static void LaunchNew(TaskItem item)
     {
+        if (item.IsStore) { Launcher.Item(item.Key); return; }   // a Store app starts through its app id, never its exe
         if (item.ExePath == null) return;
         // A pin made from a shortcut launches through it, so arguments and advertised targets are honoured.
         var target = State.Shared.TaskbarPinLaunch.TryGetValue(item.ExePath, out var lnk) && File.Exists(lnk) ? lnk : item.ExePath;
@@ -1121,7 +1150,7 @@ public partial class Taskbar : Window
         }
 
         // The program's own tasks ("Open new window"...), under their categories, as in Windows 10.
-        var tasks = JumpTasks.For(AppIdsOf(item), item.ExePath);
+        var tasks = JumpTasks.For(AppIdsOf(item), ProgramOf(item));
         if (tasks.Count > 0)
         {
             string? category = null;
@@ -1143,8 +1172,7 @@ public partial class Taskbar : Window
         }
 
         m.Items.Add(Entry(Literal(item.Name), () => LaunchNew(item), bold: true, icon: item.Icon));
-        bool pinnable = item.ExePath != null && !item.Key.Contains('|');
-        if (pinnable)
+        if (item.PinKey != null)
             m.Items.Add(item.IsPinned
                 ? Entry("Unpin from taskbar", () => SetPinned(item, false))
                 : Entry("Pin to taskbar", () => SetPinned(item, true)));
@@ -1166,6 +1194,7 @@ public partial class Taskbar : Window
     {
         foreach (var h in item.Windows.Take(1))
             if (PropStore.WindowAumid(h) is { Length: > 0 } a) yield return JumpLists.AppId(a);
+        if (item.IsStore) yield return JumpLists.AppId(item.Key[Launcher.StorePrefix.Length..]);   // also when not running
         if (item.ExePath == null) yield break;
         if (State.Shared.TaskbarPinLaunch.TryGetValue(item.ExePath, out var lnk) && PropStore.ShortcutAumid(lnk) is { Length: > 0 } b) yield return JumpLists.AppId(b);
         yield return JumpLists.AppId(item.ExePath);
@@ -1174,14 +1203,24 @@ public partial class Taskbar : Window
     /// <summary>Opens a recent item with its program (a folder: in File Explorer).</summary>
     static void OpenRecent(TaskItem item, string path)
     {
+        if (item.IsStore) { Launcher.Item(item.Key, argument: path); return; }
         if (item.ExePath == null) return;
         var target = State.Shared.TaskbarPinLaunch.TryGetValue(item.ExePath, out var lnk) && File.Exists(lnk) ? lnk : item.ExePath;
         Launcher.Item(target, argument: path);   // one argument, quoted by the system; a path with a quote in it is refused
     }
 
+    /// <summary>The program behind a button: its exe, or for a Store app pinned before it ran, the running window's exe.</summary>
+    static string? ProgramOf(TaskItem item)
+    {
+        if (item.ExePath != null) return item.ExePath;
+        if (item.Windows.FirstOrDefault() is var h && h != 0) { Win.GetWindowThreadProcessId(h, out uint pid); return Win.ExePath(pid); }
+        return null;
+    }
+
     void SetPinned(TaskItem item, bool pin)
     {
-        if (pin) State.Shared.PinToTaskbar(item.ExePath!, null); else State.Shared.UnpinFromTaskbar(item.ExePath!);
+        if (item.PinKey is not { } key) return;
+        if (pin) State.Shared.PinToTaskbar(key, null); else State.Shared.UnpinFromTaskbar(key);
         State.Shared.Save();
         _tracker.Refresh();
     }
