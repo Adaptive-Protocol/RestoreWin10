@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.0.2 (2026-10-12)
+
+### Notification area
+
+* An icon whose program gives no tooltip shows the program's name on hover, in the `^` flyout and on the taskbar.
+  Electron apps such as Claude register their icon again without a tooltip after the taskbar restarts (for
+  example when RestoreWin10 is updated), so their icons used to show nothing. A program's own tooltip still wins.
+
 ## 2.0.1 (2026-10-09)
 
 ### Taskbar

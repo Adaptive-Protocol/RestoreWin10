@@ -156,7 +156,7 @@
         </ItemsControl.ItemsPanel>
         <ItemsControl.ItemTemplate>
           <DataTemplate>
-            <Border Width="32" Height="40" Background="Transparent" ToolTip="{Binding Tooltip}"
+            <Border Width="32" Height="40" Background="Transparent" ToolTip="{Binding DisplayTip}"
                     MouseLeftButtonDown="OnTrayDown" MouseLeftButtonUp="OnTrayUp" MouseRightButtonUp="OnTrayRight">
               <Border.Style>
                 <Style TargetType="Border">

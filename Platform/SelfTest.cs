@@ -254,7 +254,15 @@ static class SelfTest
             Check("tray: an application message is kept, with the owner's process",
                   Send(1, owner.Handle, 7, 1, 0x8001) && host.Find(owner.Handle, 7) is { Callback: 0x8001 } t && t.Pid == (uint)Environment.ProcessId);
             Check("tray: removed on request", Send(2, owner.Handle, 7, 0, 0) && host.Find(owner.Handle, 7) == null);
+            // An Electron app re-registers after a taskbar restart with only the icon and the callback (flags 0x3).
+            Check("tray: an icon added without a tooltip shows its program's name",
+                  Send(0, owner.Handle, 8, 0x3, 0x8001) && host.Find(owner.Handle, 8) is { Tooltip.Length: 0 } nt &&
+                  nt.DisplayTip.Length > 0 && nt.DisplayTip == TrayIcon.ProgramName(Environment.ProcessPath!));
         }
+        Check("tray: the program's own tooltip wins when it gives one",
+              new TrayIcon { Owner = Path.Combine(Environment.SystemDirectory, "notepad.exe"), Tooltip = "Mine" }.DisplayTip == "Mine");
+        Check("tray: a program name comes from its file description",
+              TrayIcon.ProgramName(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "explorer.exe")) is { Length: > 0 } en && en != "explorer");
 
         // ---- Phase 6: jump lists (F-09) and the Run-box lookup (F-10) ----
         Check("jump lists: full paths are offered, local or network",

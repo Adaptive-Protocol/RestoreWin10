@@ -10,7 +10,8 @@ namespace RestoreWin10;
 /// <summary>One notification-area icon registered by some program.</summary>
 public sealed class TrayIcon : Notifier
 {
-    string _tip = "";
+    string _tip = "", _owner = "";
+    string? _ownerName;
     BitmapSource? _icon;
 
     public nint Hwnd { get; init; }
@@ -18,13 +19,33 @@ public sealed class TrayIcon : Notifier
     public uint Pid { get; init; }
     public uint Uid { get; init; }
     public string Key { get; init; } = "";
-    public string Owner { get; set; } = "";          // executable path of the program that owns the icon
+    public string Owner { get => _owner; set { _owner = value; _ownerName = null; Raise(nameof(DisplayTip)); } }   // executable path of the program that owns the icon
     public uint Callback { get; set; }               // message to post back to the owner on mouse events
     public int Version { get; set; }
     public bool Hidden { get; set; }
 
-    public string Tooltip { get => _tip; set => Set(ref _tip, value); }
+    public string Tooltip { get => _tip; set { Set(ref _tip, value); Raise(nameof(DisplayTip)); } }
     public BitmapSource? Icon { get => _icon; set => Set(ref _icon, value); }
+
+    /// <summary>
+    /// What hovering the icon shows: the program's own tooltip, or when it gave none, the program's name ("Claude", from
+    /// its file description). Some programs send no tooltip when they register again after a taskbar (re)starts:
+    /// Electron apps re-add their icon with only the icon and the callback, so after RestoreWin10 is updated or
+    /// restarted they would otherwise show nothing until they change their tooltip.
+    /// </summary>
+    public string DisplayTip => _tip.Length > 0 ? _tip : _ownerName ??= ProgramName(_owner);
+
+    internal static string ProgramName(string exe)
+    {
+        if (exe.Length == 0) return "";
+        try
+        {
+            var d = System.Diagnostics.FileVersionInfo.GetVersionInfo(exe).FileDescription?.Trim();
+            if (!string.IsNullOrEmpty(d)) return d;
+        }
+        catch { }
+        return Path.GetFileNameWithoutExtension(exe);
+    }
 }
 
 /// <summary>

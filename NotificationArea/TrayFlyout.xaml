@@ -13,7 +13,7 @@
         </ItemsControl.ItemsPanel>
         <ItemsControl.ItemTemplate>
           <DataTemplate>
-            <Border Width="36" Height="36" Background="Transparent" ToolTip="{Binding Tooltip}"
+            <Border Width="36" Height="36" Background="Transparent" ToolTip="{Binding DisplayTip}"
                     MouseLeftButtonDown="OnIconDown" MouseLeftButtonUp="OnIconUp" MouseRightButtonUp="OnIconRight">
               <Border.Style>
                 <Style TargetType="Border">
