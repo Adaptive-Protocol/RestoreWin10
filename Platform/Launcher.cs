@@ -45,11 +45,15 @@ static class Launcher
     /// <summary>Settings' main page. (A bare "ms-settings:" only brings an open Settings window forward, on whatever page it was left.)</summary>
     public const string SettingsHome = "ms-settings:home";
 
+    /// <summary>Windows Security's own address (registered by Windows for the Windows Security app).</summary>
+    public const string WindowsSecurity = "windowsdefender:";
+
     /// <summary>A Settings page. Only Windows' own settings addresses are accepted; a bare "ms-settings:" opens the main page.</summary>
     public static void Settings(string uri)
     {
         bool known = uri.StartsWith("ms-settings:", StringComparison.OrdinalIgnoreCase) ||
-                     uri.Equals("ms-availablenetworks:", StringComparison.OrdinalIgnoreCase);
+                     uri.Equals("ms-availablenetworks:", StringComparison.OrdinalIgnoreCase) ||
+                     uri.Equals(WindowsSecurity, StringComparison.OrdinalIgnoreCase);
         if (!known || uri.IndexOfAny(Unsafe) >= 0) { Refused("not a Settings address", uri); return; }
         if (uri.Equals("ms-settings:", StringComparison.OrdinalIgnoreCase)) uri = SettingsHome;
         Start(new ProcessStartInfo(uri) { UseShellExecute = true, WorkingDirectory = System32 });

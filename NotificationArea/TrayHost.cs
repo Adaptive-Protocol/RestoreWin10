@@ -242,9 +242,11 @@ public sealed class TrayHost : IDisposable
         {
             case NIM_ADD:
             case NIM_MODIFY:
+                bool adoptedByModify = false;
                 if (icon == null)
                 {
                     if (cmd == NIM_MODIFY && (flags & NIF_ICON) == 0) return false;
+                    adoptedByModify = cmd == NIM_MODIFY;
                     icon = new TrayIcon { Hwnd = hwnd, Pid = pid, Uid = uid, Key = key };
                     icon.Owner = Win.ExePath(pid) ?? "";
                     _all.Add(icon);
@@ -280,6 +282,11 @@ public sealed class TrayHost : IDisposable
                 }
                 Log($"{(cmd == NIM_ADD ? "ADD" : "MODIFY")} owner={Path.GetFileName(icon.Owner)} uid={uid} flags=0x{flags:x} ver={icon.Version} cb=0x{icon.Callback:x} u800={(avail >= 804 ? I32(nid, 800) : -1)}");
                 Rebuild();
+                // A "modify" for an icon we did not know, with no callback to report clicks to: the icon is shown, but
+                // the answer is failure, as Explorer gives for an unknown icon. Programs re-registering after a
+                // taskbar restart (Windows Security among them) try a modify first and send the full "add", with
+                // their callback, only when it fails; answering success left their icons unclickable.
+                if (adoptedByModify && icon.Callback == 0) { NoteOnce($"asked {Path.GetFileName(icon.Owner)} to add its icon in full (modify without a callback)"); return false; }
                 return true;
 
             case NIM_DELETE:
@@ -360,9 +367,19 @@ public sealed class TrayHost : IDisposable
 
     public enum Button { Left, Right, LeftDouble }
 
+    /// <summary>The icon is Windows Security's own (its tray program in System32, by the process's image path).</summary>
+    internal static bool IsWindowsSecurity(TrayIcon t) =>
+        t.Owner.Equals(Path.Combine(Environment.SystemDirectory, "SecurityHealthSystray.exe"), StringComparison.OrdinalIgnoreCase);
+
     public void Click(TrayIcon t, Button button)
     {
-        if (t.Callback == 0) return;
+        if (t.Callback == 0)
+        {
+            // Windows Security's icon without its callback still opens Windows Security, through the address Windows
+            // registers for it (never on behalf of any other program).
+            if (IsWindowsSecurity(t)) { Log($"CLICK {button} owner={Path.GetFileName(t.Owner)}: no callback, opened Windows Security"); Launcher.Settings(Launcher.WindowsSecurity); }
+            return;
+        }
         // Only to the program that registered the icon: its window may have closed and the handle gone to another program.
         Win.GetWindowThreadProcessId(t.Hwnd, out uint pid);
         if (!IsWindow(t.Hwnd) || pid != t.Pid) { _all.Remove(t); Rebuild(); return; }

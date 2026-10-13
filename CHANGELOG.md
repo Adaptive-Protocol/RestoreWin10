@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.0.3 (2026-10-12)
+
+### Notification area
+
+* Windows Security's icon opens Windows Security again after RestoreWin10 restarts (for example after an update).
+  Some programs register their icon again with a short "modify" and send the full registration, which says where
+  clicks go, only if the taskbar answers that the icon is unknown, as Explorer does. RestoreWin10 now answers the
+  same way, so their icons stay clickable.
+* If Windows Security's own icon still cannot take clicks, clicking it opens Windows Security directly.
+
 ## 2.0.2 (2026-10-12)
 
 ### Notification area

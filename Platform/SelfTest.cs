@@ -254,11 +254,22 @@ static class SelfTest
             Check("tray: an application message is kept, with the owner's process",
                   Send(1, owner.Handle, 7, 1, 0x8001) && host.Find(owner.Handle, 7) is { Callback: 0x8001 } t && t.Pid == (uint)Environment.ProcessId);
             Check("tray: removed on request", Send(2, owner.Handle, 7, 0, 0) && host.Find(owner.Handle, 7) == null);
+            // Windows Security re-registers after a taskbar restart with a "modify" and no callback, and sends the full
+            // "add" only if that fails, as it does with Explorer.
+            Check("tray: a modify for an unknown icon without a callback shows it but reports failure",
+                  !Send(1, owner.Handle, 9, 0x2, 0) && host.Find(owner.Handle, 9) is { Callback: 0 });
+            Check("tray: the full add that follows supplies the callback",
+                  Send(0, owner.Handle, 9, 0x3, 0x8002) && host.Find(owner.Handle, 9) is { Callback: 0x8002 });
+            Check("tray: a modify for an unknown icon that carries its callback still succeeds",
+                  Send(1, owner.Handle, 10, 0x3, 0x8003) && host.Find(owner.Handle, 10) is { Callback: 0x8003 });
             // An Electron app re-registers after a taskbar restart with only the icon and the callback (flags 0x3).
             Check("tray: an icon added without a tooltip shows its program's name",
                   Send(0, owner.Handle, 8, 0x3, 0x8001) && host.Find(owner.Handle, 8) is { Tooltip.Length: 0 } nt &&
                   nt.DisplayTip.Length > 0 && nt.DisplayTip == TrayIcon.ProgramName(Environment.ProcessPath!));
         }
+        Check("tray: only System32's SecurityHealthSystray.exe counts as Windows Security",
+              TrayHost.IsWindowsSecurity(new TrayIcon { Owner = Path.Combine(Environment.SystemDirectory, "SecurityHealthSystray.exe") }) &&
+              !TrayHost.IsWindowsSecurity(new TrayIcon { Owner = @"C:\Users\a\Downloads\SecurityHealthSystray.exe" }));
         Check("tray: the program's own tooltip wins when it gives one",
               new TrayIcon { Owner = Path.Combine(Environment.SystemDirectory, "notepad.exe"), Tooltip = "Mine" }.DisplayTip == "Mine");
         Check("tray: a program name comes from its file description",
