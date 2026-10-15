@@ -24,36 +24,46 @@ static class WindowArrange
         _ => "Undo Show all windows side by side",
     };
 
+    /// <summary>
+    /// Arranges the open windows. Which windows and where they were is worked out here; moving them waits on each
+    /// program, so that runs on a worker thread (<see cref="Win.OffUiThread"/>), and windows of programs that do not
+    /// respond are left where they are.
+    /// </summary>
     public static void Arrange(Kind kind)
     {
         var wins = TaskTracker.OpenWindows().Distinct()
-            .Where(h => Win.IsWindow(h) && Win.IsWindowVisible(h) && !Win.IsIconic(h) && Win.ClassName(h) != "Ghost").ToList();
+            .Where(h => Win.IsWindow(h) && Win.IsWindowVisible(h) && !Win.IsIconic(h) && Win.ClassName(h) != "Ghost" && !Win.IsHungAppWindow(h)).ToList();
         if (wins.Count == 0) return;
 
         s_undo = wins.Select(h => (h, Placement(h))).ToList();
         s_undoKind = kind;
-        foreach (var h in wins) if (Win.IsZoomed(h)) Win.ShowWindow(h, Win.SW_RESTORE);   // maximised windows join in, as in Windows 10
-
-        foreach (var onScreen in wins.GroupBy(Screens.HandleOf))
+        var groups = wins.GroupBy(Screens.HandleOf).Select(g => (Area: Screens.FromWindow(g.First()).Work, Kids: g.ToArray())).ToList();
+        Win.OffUiThread(() =>
         {
-            var area = Screens.FromWindow(onScreen.First()).Work;
-            var kids = onScreen.ToArray();
-            if (kind == Kind.Cascade) Win.CascadeWindows(0, MDITILE_ZORDER, ref area, (uint)kids.Length, kids);
-            else Win.TileWindows(0, kind == Kind.Stacked ? MDITILE_HORIZONTAL : MDITILE_VERTICAL, ref area, (uint)kids.Length, kids);
-        }
+            foreach (var h in wins) if (Win.IsZoomed(h)) Win.ShowWindow(h, Win.SW_RESTORE);   // maximised windows join in, as in Windows 10
+            foreach (var (area0, kids) in groups)
+            {
+                var area = area0;
+                if (kind == Kind.Cascade) Win.CascadeWindows(0, MDITILE_ZORDER, ref area, (uint)kids.Length, kids);
+                else Win.TileWindows(0, kind == Kind.Stacked ? MDITILE_HORIZONTAL : MDITILE_VERTICAL, ref area, (uint)kids.Length, kids);
+            }
+        }, "arranging windows");
     }
 
     /// <summary>Puts every window back where (and as maximised/normal as) it was before the arrangement.</summary>
     public static void Undo()
     {
-        if (s_undo == null) return;
-        foreach (var (h, p) in s_undo)
-        {
-            if (!Win.IsWindow(h)) continue;
-            var wp = p;
-            Win.SetWindowPlacement(h, ref wp);
-        }
+        if (s_undo is not { } undo) return;
         s_undo = null;
+        Win.OffUiThread(() =>
+        {
+            foreach (var (h, p) in undo)
+            {
+                if (!Win.IsWindow(h) || Win.IsHungAppWindow(h)) continue;
+                var wp = p;
+                Win.SetWindowPlacement(h, ref wp);
+            }
+        }, "undoing the arrangement");
     }
 
     static Win.WINDOWPLACEMENT Placement(nint h)

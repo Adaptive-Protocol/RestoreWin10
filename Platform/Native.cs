@@ -30,7 +30,10 @@ static class Win
     [DllImport("user32.dll")] public static extern nint GetAncestor(nint h, int flags);
     [DllImport("user32.dll")] public static extern nint GetForegroundWindow();
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(nint h);
+    /// <summary>Waits for the window's program to act on it: only for RestoreWin10's own windows (see <see cref="OffUiThread"/>).</summary>
     [DllImport("user32.dll")] public static extern bool ShowWindow(nint h, int cmd);
+    /// <summary>Hands the request to the window's program and returns at once: for every other program's window.</summary>
+    [DllImport("user32.dll")] public static extern bool ShowWindowAsync(nint h, int cmd);
     [DllImport("user32.dll")] public static extern bool BringWindowToTop(nint h);
     [DllImport("user32.dll")] public static extern nint SendMessage(nint h, uint msg, nint w, nint l);
     [DllImport("user32.dll")] public static extern bool PostMessage(nint h, uint msg, nint w, nint l);
@@ -90,12 +93,13 @@ static class Win
 
     /// <summary>Asks a window to close. A hung window gets Windows' own "is not responding" dialog (EndTask) instead.
     /// A program running as administrator refuses RestoreWin10's message (UIPI); Windows is then asked to close it
-    /// (EndTask without force, as Explorer and Task Manager do), so it can still ask to save.</summary>
+    /// (EndTask without force, as Explorer and Task Manager do), so it can still ask to save. EndTask waits on the
+    /// program, so it runs off the UI thread.</summary>
     public static void CloseWindow(nint h)
     {
         var hung = ClassName(h) == "Ghost" ? HungFromGhost(h) : (IsHungAppWindow(h) ? h : 0);
-        if (hung != 0) EndTask(hung, false, false);
-        else if (!PostMessage(h, WM_CLOSE, 0, 0)) EndTask(h, false, false);
+        if (hung != 0) OffUiThread(() => EndTask(hung, false, false), "closing a window that does not respond");
+        else if (!PostMessage(h, WM_CLOSE, 0, 0)) OffUiThread(() => EndTask(h, false, false), "closing a window");
     }
 
     public static string Text(nint h)
@@ -146,17 +150,64 @@ static class Win
     }
 
     /// <summary>Bring a window to the front, restoring it if minimised.</summary>
+    /// <summary>Brings one of RestoreWin10's own windows to the front. Other programs' windows: <see cref="ActivateOther"/>.</summary>
     public static void Activate(nint h)
     {
         if (IsIconic(h)) ShowWindow(h, SW_RESTORE);
         if (SetForegroundWindow(h)) return;
-        // Not allowed to take focus: borrow the foreground thread's input state briefly.
+        // Not allowed to take focus: borrow the foreground thread's input state briefly - never a frozen program's,
+        // whose input this thread would then share.
         var fg = GetForegroundWindow();
+        if (fg == 0 || IsHungAppWindow(fg)) return;
         uint fgThread = GetWindowThreadProcessId(fg, out _), me = GetCurrentThreadId();
         AttachThreadInput(me, fgThread, true);
         BringWindowToTop(h); SetForegroundWindow(h);
         AttachThreadInput(me, fgThread, false);
     }
+
+    // ---------- other programs' windows: never waited on by the UI thread ----------
+    //
+    // ShowWindow, SetWindowPlacement, CascadeWindows, BringWindowToTop and EndTask on another program's window wait
+    // until that program has acted on it. A frozen program (a game that hung, full screen) never does, and a taskbar
+    // whose UI thread waits on it is frozen with it, for good and without a crash to log. So every such call runs on
+    // a short-lived worker thread (or uses the Async form): if the program is frozen, only that worker waits.
+
+    static int s_waiting;
+
+    /// <summary>
+    /// Runs <paramref name="work"/> on a worker thread of its own. If several earlier ones are still waiting on frozen
+    /// programs, the request is dropped (and noted) instead of adding another waiting thread.
+    /// </summary>
+    public static void OffUiThread(Action work, string what)
+    {
+        if (Volatile.Read(ref s_waiting) >= 4) { CrashLog.Note($"skipped {what}: earlier window requests are still waiting on programs that do not respond"); return; }
+        Interlocked.Increment(ref s_waiting);
+        new Thread(() =>
+        {
+            try { work(); }
+            catch (Exception ex) { CrashLog.Note($"{what} failed: {ex.GetType().Name}"); }
+            finally { Interlocked.Decrement(ref s_waiting); }
+        }) { IsBackground = true, Name = "window request" }.Start();
+    }
+
+    /// <summary>Requests still waiting on programs that do not respond (for the self-test and diagnostics).</summary>
+    internal static int WaitingRequests => Volatile.Read(ref s_waiting);
+
+    /// <summary>Switches to another program's window, restoring it if minimised, without the UI thread waiting on it.</summary>
+    public static void ActivateOther(nint h) => OffUiThread(() =>
+    {
+        if (IsIconic(h)) ShowWindowAsync(h, SW_RESTORE);
+        if (SetForegroundWindow(h)) return;
+        var fg = GetForegroundWindow();
+        if (fg == 0 || IsHungAppWindow(fg) || IsHungAppWindow(h)) return;   // never share input with a frozen program
+        uint fgThread = GetWindowThreadProcessId(fg, out _), me = GetCurrentThreadId();
+        AttachThreadInput(me, fgThread, true);
+        try { BringWindowToTop(h); SetForegroundWindow(h); }
+        finally { AttachThreadInput(me, fgThread, false); }
+    }, "switching to a window");
+
+    /// <summary>Minimises another program's window without waiting for it.</summary>
+    public static void MinimizeOther(nint h) => ShowWindowAsync(h, SW_MINIMIZE);
 
     /// <summary>Press a Windows-key shortcut (e.g. Win+D) on the user's behalf.</summary>
     public static void WinCombo(byte key)

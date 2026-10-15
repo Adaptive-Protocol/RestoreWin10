@@ -433,7 +433,7 @@ static class TaskbarRecovery
         foreach (var p in InstalledShells()) using (p) { try { p.Kill(); p.WaitForExit(3000); } catch { } }
 
         RestoreSavedState(force: true);
-        foreach (var h in ExplorerBars()) Win.ShowWindow(h, Win.SW_SHOW);
+        foreach (var h in ExplorerBars()) Win.ShowWindowAsync(h, Win.SW_SHOW);
         Win.PostMessage(0xFFFF, Win.RegisterWindowMessage("TaskbarCreated"), 0, 0);   // tray icons go back to Explorer
         Setup.Message("The Windows taskbar is back.", 0x40, quiet);
         return 0;
@@ -447,7 +447,7 @@ static class TaskbarRecovery
     {
         if (State.Shared.ExplorerTaskbarState is null) return;
         RestoreSavedState();
-        foreach (var h in ExplorerBars()) Win.ShowWindow(h, Win.SW_SHOW);
+        foreach (var h in ExplorerBars()) Win.ShowWindowAsync(h, Win.SW_SHOW);
         CrashLog.Note("the last run ended while replacing the Windows taskbar; it has been given back");
     }
 

@@ -44,7 +44,7 @@ public partial class Taskbar : Window
             var pv = new ThumbnailPopup();
             pv.PointerEntered += () => _leaveTimer.Stop();
             pv.PointerLeft += () => _leaveTimer.Start();
-            pv.WindowChosen += h => { pv.Dismiss(); DismissStart(); Win.Activate(h); };
+            pv.WindowChosen += h => { pv.Dismiss(); DismissStart(); Win.ActivateOther(h); };
             pv.CloseRequested += Win.CloseWindow;
             return _preview = pv;
         }
@@ -390,7 +390,8 @@ public partial class Taskbar : Window
             }, 0);
         }
         if (!save && ++_nativeCheck % 10 == 0) AdoptNewNativeBars();   // every ~3 s: has Explorer been restarted?
-        foreach (var h in _nativeBars) Win.ShowWindow(h, Win.SW_HIDE);
+        // Explorer's windows: asked without waiting (every 300 ms), so a busy or frozen Explorer cannot freeze this bar.
+        foreach (var h in _nativeBars) if (Win.IsWindowVisible(h)) Win.ShowWindowAsync(h, Win.SW_HIDE);
     }
 
     /// <summary>
@@ -449,7 +450,7 @@ public partial class Taskbar : Window
         var abd = NewAppBarData();
         abd.lParam = _savedState;
         AppBar.Send(Win.ABM_SETSTATE, ref abd);
-        foreach (var h in _nativeBars) Win.ShowWindow(h, Win.SW_SHOW);
+        foreach (var h in _nativeBars) Win.ShowWindowAsync(h, Win.SW_SHOW);
         State.Shared.ExplorerTaskbarState = null;   // put back: nothing left to recover
         State.Shared.Save();
     }
@@ -1075,7 +1076,7 @@ public partial class Taskbar : Window
         if (item.Windows.Count == 1)
         {
             var h = item.Windows[0];
-            if (item.IsActive) Win.ShowWindow(h, Win.SW_MINIMIZE); else Win.Activate(h);
+            if (item.IsActive) Win.MinimizeOther(h); else Win.ActivateOther(h);   // never waits on the program
         }
         else { _hoverItem = item; _hoverEl = (FrameworkElement)s; ShowPreview(); }
     }

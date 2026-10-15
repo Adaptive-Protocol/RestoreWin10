@@ -267,6 +267,57 @@ static class SelfTest
                   Send(0, owner.Handle, 8, 0x3, 0x8001) && host.Find(owner.Handle, 8) is { Tooltip.Length: 0 } nt &&
                   nt.DisplayTip.Length > 0 && nt.DisplayTip == TrayIcon.ProgramName(Environment.ProcessPath!));
         }
+        // ---- a frozen program cannot freeze the taskbar ----
+        // A window whose thread stops handling messages, as a game's does when it hangs. Minimising it, switching to
+        // it and closing it must return at once; only a worker thread may wait on it.
+        {
+            using var frozen = new ManualResetEventSlim();
+            using var created = new ManualResetEventSlim();
+            nint frozenHwnd = 0;
+            var owner = new Thread(() =>
+            {
+                // Hidden and off-screen: the test never shows anything or takes the foreground from the user.
+                var src = new System.Windows.Interop.HwndSource(new System.Windows.Interop.HwndSourceParameters("RestoreWin10.SelfTest.Frozen")
+                    { WindowStyle = unchecked((int)0x80000000) /* WS_POPUP, not visible */, PositionX = -32000, PositionY = -32000, Width = 10, Height = 10 });
+                frozenHwnd = src.Handle;
+                created.Set();
+                // "Frozen": no messages handled until released. (Not frozen.Wait: a wait on an STA thread still
+                // handles sent messages, so the window would answer.)
+                var until = DateTime.Now.AddSeconds(10);
+                while (!frozen.IsSet && DateTime.Now < until) Thread.Sleep(20);
+                src.Dispose();
+            }) { IsBackground = true };
+            owner.SetApartmentState(ApartmentState.STA);
+            owner.Start();
+            created.Wait(5_000);
+            int before = Win.WaitingRequests;
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            Win.MinimizeOther(frozenHwnd);
+            // What switching does to a frozen window (a call that waits on it), run the way switching runs it.
+            Win.OffUiThread(() => Win.SendMessage(frozenHwnd, 0 /* WM_NULL: waits for the program, changes nothing */, 0, 0), "self-test");
+            Check($"frozen program: minimise and switch return at once ({sw.ElapsedMilliseconds} ms)", sw.ElapsedMilliseconds < 500);
+            Thread.Sleep(200);
+            Check("frozen program: the waiting is done by a worker thread", Win.WaitingRequests == before + 1);
+            frozen.Set();
+            owner.Join(5_000);
+            var deadline = DateTime.Now.AddSeconds(5);
+            while (Win.WaitingRequests > before && DateTime.Now < deadline) Thread.Sleep(50);
+            Check("frozen program: the worker finishes once the program responds again", Win.WaitingRequests == before);
+        }
+        {
+            using var gate = new ManualResetEventSlim();
+            int before = Win.WaitingRequests;
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            Win.OffUiThread(() => gate.Wait(5_000), "self-test");
+            Check($"window requests run off the UI thread ({sw.ElapsedMilliseconds} ms)", sw.ElapsedMilliseconds < 200 && Win.WaitingRequests == before + 1);
+            for (int i = 0; i < 6; i++) Win.OffUiThread(() => gate.Wait(5_000), "self-test");
+            Check("at most four requests wait at a time; more are dropped", Win.WaitingRequests == 4);
+            gate.Set();
+            var deadline = DateTime.Now.AddSeconds(5);
+            while (Win.WaitingRequests > before && DateTime.Now < deadline) Thread.Sleep(50);
+            Check("waiting requests are released", Win.WaitingRequests == before);
+        }
+
         Check("tray: only System32's SecurityHealthSystray.exe counts as Windows Security",
               TrayHost.IsWindowsSecurity(new TrayIcon { Owner = Path.Combine(Environment.SystemDirectory, "SecurityHealthSystray.exe") }) &&
               !TrayHost.IsWindowsSecurity(new TrayIcon { Owner = @"C:\Users\a\Downloads\SecurityHealthSystray.exe" }));

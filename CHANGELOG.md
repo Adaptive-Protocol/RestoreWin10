@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.0.4 (2026-10-15)
+
+### Taskbar
+
+* A program that freezes (for example a game that hangs) can no longer freeze the taskbar with it. Minimising,
+  switching to a window, cascading or tiling windows and closing them used Windows calls that wait for the program
+  to respond, on the taskbar's own thread; they now hand the request over without waiting, or wait on a worker
+  thread instead, as Explorer does. Windows of programs that do not respond are left out of cascading and tiling.
+* Requests left waiting on frozen programs are limited and noted in `crash.log`.
+
 ## 2.0.3 (2026-10-12)
 
 ### Notification area
