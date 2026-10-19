@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.0.5 (2026-10-19)
+
+### Shell
+
+* RestoreWin10 comes back after an installer or update closes it. Updaters (Windows Installer, Office
+  Click-to-Run, Windows Update) close programs that hold files they must replace, through Windows' Restart
+  Manager; RestoreWin10 can hold such files (icons and shell extensions of installed programs) and then stayed
+  closed until the next sign-in. It now registers with Windows to be started again once the update is done.
+  Crashes are still handled by the sign-in task, and End task in Task Manager still leaves it closed.
+* Tested with Restart Manager: closed in order in about half a second, Windows' taskbar shown meanwhile, and
+  started again with the taskbar replaced about four seconds later.
+
 ## 2.0.4 (2026-10-15)
 
 ### Taskbar

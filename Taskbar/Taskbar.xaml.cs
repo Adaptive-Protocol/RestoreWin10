@@ -287,6 +287,18 @@ public partial class Taskbar : Window
             DisplaysChanged?.Invoke();
         else if (msg == 0x0021 /* WM_MOUSEACTIVATE */) { handled = true; return 3 /* MA_NOACTIVATE */; }
         else if (_shellHookMsg != 0 && msg == (int)_shellHookMsg && (int)wParam == Win.HSHELL_FLASH) _tracker.Flash(lParam);
+        else if (msg == 0x0016 /* WM_ENDSESSION */ && _main && AppRestart.IsInstallerClose(wParam, lParam))
+        {
+            // A backup only. When an installer closes RestoreWin10 through Restart Manager, WPF itself normally shuts
+            // the application down in order (OnExit gives the Windows taskbar back); in the Restart Manager test of
+            // 19 Oct that path closed it and this handler was not reached, so nothing was written to crash.log. If the
+            // message does reach this bar first, the Windows taskbar and the tray icons are given back here, before the
+            // process can be ended, and the application closes normally. Windows starts RestoreWin10 again when the
+            // installer is done (AppRestart). A sign-out takes WPF's usual path.
+            CrashLog.Note("an installer asked RestoreWin10 to close; the Windows taskbar was given back, and Windows will start RestoreWin10 again afterwards");
+            EmergencyRestore();
+            Application.Current.Shutdown();
+        }
         return 0;
     }
 

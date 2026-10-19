@@ -267,6 +267,21 @@ static class SelfTest
                   Send(0, owner.Handle, 8, 0x3, 0x8001) && host.Find(owner.Handle, 8) is { Tooltip.Length: 0 } nt &&
                   nt.DisplayTip.Length > 0 && nt.DisplayTip == TrayIcon.ProgramName(Environment.ProcessPath!));
         }
+        // ---- closed by an installer, started again afterwards ----
+        Check("restart after updates: '--replace', and not after a crash, a hang or a restart of the PC",
+              AppRestart.CommandLine == "--replace" && AppRestart.Flags == (1 | 2 | 8));
+        if (AppRestart.Register())
+        {
+            var reg = AppRestart.Registered();
+            Check($"restart after updates: Windows has it on record ({reg?.CommandLine} / {reg?.Flags})",
+                  reg is { } r && r.CommandLine == AppRestart.CommandLine && r.Flags == AppRestart.Flags);
+            AppRestart.Unregister();
+        }
+        else Check("restart after updates: registration accepted", false);
+        Check("an installer's close (WM_ENDSESSION, ENDSESSION_CLOSEAPP) is told apart from a sign-out",
+              AppRestart.IsInstallerClose(1, 0x1) && !AppRestart.IsInstallerClose(1, 0) &&
+              !AppRestart.IsInstallerClose(1, unchecked((nint)0x80000000) /* ENDSESSION_LOGOFF */) && !AppRestart.IsInstallerClose(0, 0x1));
+
         // ---- a frozen program cannot freeze the taskbar ----
         // A window whose thread stops handling messages, as a game's does when it hangs. Minimising it, switching to
         // it and closing it must return at once; only a worker thread may wait on it.

@@ -133,6 +133,9 @@ public partial class App : Application
         {
             _taskbar = new Taskbar(_menu, replace: _replace);
             _taskbar.Show();
+            // Closed by an installer (an Office or Windows update replacing a file it holds): Windows starts it again
+            // afterwards. Only the installed shell that replaces the taskbar registers (see AppRestart).
+            if (_replace) AppRestart.Register();
             MemoryTrim.StartIdle(() => _menu.IsVisible || System.Windows.Input.Mouse.LeftButton == System.Windows.Input.MouseButtonState.Pressed);
             // The other screens get bars of their own (Windows' "show my taskbar on all displays" setting decides),
             // and they follow screens being plugged in, unplugged or rearranged, and Remote Desktop sessions.

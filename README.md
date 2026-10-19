@@ -18,7 +18,9 @@ Windows 10 style taskbar at the bottom of every screen, and hosts the notificati
 button open the Windows 10 Start menu. RestoreWin10 follows Windows' own settings (light or dark mode, accent colour,
 transparency, taskbar and Start options), so the Settings app keeps working as you expect.
 
-If RestoreWin10 is closed, Windows' own taskbar comes back. If it crashes, it is started again a few seconds later.
+If RestoreWin10 is closed, Windows' own taskbar comes back. If it crashes, it is started again a few seconds later, and
+if an installer or update closes it (for example an Office update replacing a file it has open), Windows starts it
+again when the update is done.
 
 ## Key features
 
