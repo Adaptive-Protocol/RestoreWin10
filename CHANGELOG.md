@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.0.8 (2026-10-20)
+
+### Volume flyout
+
+* Choose the playback device, as in Windows 10: with two or more playback devices connected, the device name at
+  the top of the volume flyout has a chevron and opens the list of devices; the current one is marked, and
+  choosing another makes it the default for sound, media and calls. Windows' Default Beep then plays on the new
+  device. If Windows does not allow the change, Settings > Sound opens instead.
+* The slider jumps to wherever you press it and follows the mouse until you let go (it used to drag smoothly only
+  from its thumb), and a click lands exactly where you click.
+* Letting go of the slider plays Windows' Default Beep at the new level, as Windows 10 does.
+
 ## 2.0.5 (2026-10-19)
 
 ### Shell

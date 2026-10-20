@@ -48,7 +48,7 @@
     <Description>Windows 10 Start menu and taskbar for Windows 11</Description>
     <Company>RestoreWin10</Company>
     <Copyright>Copyright (c) 2026 RestoreWin10</Copyright>
-    <Version>2.0.5</Version>
+    <Version>2.0.8</Version>
   </PropertyGroup>
 
   <!-- Debug builds are development copies (Platform\Identity.cs): they run next to the installed RestoreWin10 and

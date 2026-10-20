@@ -79,6 +79,18 @@ public partial class App : Application
         // Windows' colours (light/dark, accent, transparency) before any window paints. Windows' own settings are only
         // read here; they change only when the user changes them (in Settings or from the taskbar's menu).
         Personalization.ApplyResources();
+#if DEV_BUILD
+        // Layout check: the volume flyout drawn into PNGs (closed, and with the device list open), never shown.
+        if (e.Args.FirstOrDefault(a => a.StartsWith("--render-volume=")) is { } rv)
+        {
+            var dir = rv["--render-volume=".Length..];
+            var vf = new VolumeFlyout();
+            vf.Snapshot(System.IO.Path.Combine(dir, "volume_closed.png"), listOpen: false);
+            vf.Snapshot(System.IO.Path.Combine(dir, "volume_list.png"), listOpen: true);
+            Shutdown();
+            return;
+        }
+#endif
 
         _menu = new StartMenu();
         Personalization.Start(_menu);   // the (hidden) Start window hears Settings' broadcasts

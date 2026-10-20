@@ -89,8 +89,15 @@ public static class Audio
     [ComImport, Guid("A95664D2-9614-4F35-A746-DE8DB63617E6"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
     interface IMMDeviceEnumerator
     {
-        [PreserveSig] int EnumAudioEndpoints(int dataFlow, int stateMask, out nint devices);
+        [PreserveSig] int EnumAudioEndpoints(int dataFlow, int stateMask, out IMMDeviceCollection devices);
         [PreserveSig] int GetDefaultAudioEndpoint(int dataFlow, int role, out IMMDevice device);
+    }
+
+    [ComImport, Guid("0BD7A1BE-7A1A-44DB-8397-CC5392387B5E"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    interface IMMDeviceCollection
+    {
+        [PreserveSig] int GetCount(out uint count);
+        [PreserveSig] int Item(uint index, out IMMDevice device);
     }
 
     [ComImport, Guid("D666063F-1587-4E43-81F1-B948E807363F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
@@ -98,6 +105,106 @@ public static class Audio
     {
         [PreserveSig] int Activate(ref Guid iid, int clsCtx, nint activationParams, [MarshalAs(UnmanagedType.IUnknown)] out object iface);
         [PreserveSig] int OpenPropertyStore(int stgmAccess, out IPropertyStore properties);
+        [PreserveSig] int GetId([MarshalAs(UnmanagedType.LPWStr)] out string id);
+        [PreserveSig] int GetState(out int state);
+    }
+
+    // Windows' own interface for choosing the default device: undocumented, but what Windows 10's volume flyout, the
+    // Sound control panel and tools such as SoundSwitch use, unchanged since Windows 7. Only SetDefaultEndpoint is
+    // called; the slots before it only keep the method order. A missing or changed interface is caught and the user
+    // is sent to Settings > Sound instead.
+    [ComImport, Guid("870AF99C-171D-4F9E-AF0D-E63DF40C2BC9")] class PolicyConfigClient { }
+
+    [ComImport, Guid("F8679F50-850A-41CF-9C72-430F290290C8"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    interface IPolicyConfig
+    {
+        [PreserveSig] int GetMixFormat();
+        [PreserveSig] int GetDeviceFormat();
+        [PreserveSig] int ResetDeviceFormat();
+        [PreserveSig] int SetDeviceFormat();
+        [PreserveSig] int GetProcessingPeriod();
+        [PreserveSig] int SetProcessingPeriod();
+        [PreserveSig] int GetShareMode();
+        [PreserveSig] int SetShareMode();
+        [PreserveSig] int GetPropertyValue();
+        [PreserveSig] int SetPropertyValue();
+        [PreserveSig] int SetDefaultEndpoint([MarshalAs(UnmanagedType.LPWStr)] string deviceId, int role);
+        [PreserveSig] int SetEndpointVisibility();
+    }
+
+    /// <summary>A playback device Windows reports as active: its endpoint id and the name Windows shows.</summary>
+    public record Device(string Id, string Name);
+
+    const int eRender = 0, eConsole = 0, eMultimedia = 1, eCommunications = 2, DEVICE_STATE_ACTIVE = 1;
+
+    /// <summary>The active playback devices, and which of them is the default; an empty list when Windows reports none.</summary>
+    public static (List<Device> Devices, string? DefaultId) Devices()
+    {
+        var list = new List<Device>();
+        string? current = null;
+        try
+        {
+            var en = (IMMDeviceEnumerator)new MMDeviceEnumerator();
+            try
+            {
+                if (en.EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE, out var col) == 0)
+                    try
+                    {
+                        col.GetCount(out uint n);
+                        for (uint i = 0; i < Math.Min(n, 32u); i++)   // a sane cap: nobody has more
+                        {
+                            if (col.Item(i, out var dev) != 0) continue;
+                            try
+                            {
+                                if (dev.GetId(out var id) != 0 || string.IsNullOrEmpty(id)) continue;
+                                string name = "";
+                                if (dev.OpenPropertyStore(0, out var ps) == 0)
+                                    try { name = PropStore.GetString(ps, PropStore.DeviceFriendlyName) ?? ""; } finally { Marshal.ReleaseComObject(ps); }
+                                list.Add(new Device(id, name.Length > 0 ? name : "Speakers"));
+                            }
+                            finally { Marshal.ReleaseComObject(dev); }
+                        }
+                    }
+                    finally { Marshal.ReleaseComObject(col); }
+                if (en.GetDefaultAudioEndpoint(eRender, eMultimedia, out var def) == 0)
+                    try { if (def.GetId(out var id) == 0) current = id; } finally { Marshal.ReleaseComObject(def); }
+            }
+            finally { Marshal.ReleaseComObject(en); }
+        }
+        catch { }
+        return (list, current);
+    }
+
+    /// <summary>
+    /// Makes <paramref name="id"/> the default playback device for sound, media and calls, as Windows 10's flyout does.
+    /// The id must be one of the active devices Windows lists right now (nothing else is ever passed on). False when
+    /// it is not, or when Windows refused or the interface is unavailable.
+    /// </summary>
+    public static bool SetDefault(string id)
+    {
+        if (!Devices().Devices.Any(d => d.Id == id)) return false;
+        object? pc = null;
+        try
+        {
+            pc = new PolicyConfigClient();
+            var policy = (IPolicyConfig)pc;
+            bool ok = true;
+            foreach (var role in new[] { eConsole, eMultimedia, eCommunications })
+                ok &= policy.SetDefaultEndpoint(id, role) == 0;
+            Release();   // the volume connection follows the new default at once
+            return ok;
+        }
+        catch (Exception ex) { CrashLog.Note($"could not change the default playback device ({ex.GetType().Name})"); return false; }
+        finally { if (pc != null) Marshal.ReleaseComObject(pc); }
+    }
+
+    /// <summary>Whether Windows' default-device interface can be created here (for the self-test; changes nothing).</summary>
+    internal static bool CanSetDefault()
+    {
+        object? pc = null;
+        try { pc = new PolicyConfigClient(); return pc is IPolicyConfig; }
+        catch { return false; }
+        finally { if (pc != null) Marshal.ReleaseComObject(pc); }
     }
 
     [ComImport, Guid("5CDF2C82-841E-4546-9722-0CF74078229A"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]

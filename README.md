@@ -48,6 +48,8 @@ again when the update is done.
   (Firefox: *New private window*); every task shows what it runs
 * **Notification area**: program tray icons (with the `^` overflow as a square grid), volume flyout, network, and a
   battery icon on PCs that have a battery
+* **Volume flyout**: with two or more playback devices connected, click the device name to choose between them, as
+  in Windows 10; the slider follows the mouse from wherever you press, and the Windows sound plays when you let go
 * **Several screens**: a taskbar on every screen, following Windows' multiple-display settings
 
 ## Requirements

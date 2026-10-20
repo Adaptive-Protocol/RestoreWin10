@@ -267,6 +267,23 @@ static class SelfTest
                   Send(0, owner.Handle, 8, 0x3, 0x8001) && host.Find(owner.Handle, 8) is { Tooltip.Length: 0 } nt &&
                   nt.DisplayTip.Length > 0 && nt.DisplayTip == TrayIcon.ProgramName(Environment.ProcessPath!));
         }
+        // ---- choosing the playback device in the volume flyout (read-only here: the default is never changed) ----
+        var (audioDevices, audioDefault) = Audio.Devices();
+        Check($"audio: the active playback devices are listed ({audioDevices.Count})", audioDevices.All(d => d.Id.Length > 0 && d.Name.Length > 0));
+        Check("audio: the default device is one of them", audioDefault == null || audioDevices.Any(d => d.Id == audioDefault));
+        Check("audio: Windows' default-device interface is available", Audio.CanSetDefault());
+        Check("audio: an id that is not an active device is refused", !Audio.SetDefault("{0.0.0.00000000}.{00000000-0000-0000-0000-000000000000}"));
+        log.AppendLine($"info  this PC's playback devices: {string.Join(" | ", audioDevices.Select(d => d.Name + (d.Id == audioDefault ? " (default)" : "")))}");
+        // The volume slider: a point on the track maps straight to a level (a 200-px track, 8-px thumb, 0..100).
+        Check("volume slider: the ends of the thumb's travel are 0 and 100",
+              VolumeFlyout.LevelFromX(4, 200, 8, 0, 100) == 0 && VolumeFlyout.LevelFromX(196, 200, 8, 0, 100) == 100);
+        Check("volume slider: the middle is 50, a quarter of the travel is 25",
+              VolumeFlyout.LevelFromX(100, 200, 8, 0, 100) == 50 && VolumeFlyout.LevelFromX(4 + 48, 200, 8, 0, 100) == 25);
+        Check("volume slider: points beyond the ends stay at 0 and 100",
+              VolumeFlyout.LevelFromX(-30, 200, 8, 0, 100) == 0 && VolumeFlyout.LevelFromX(260, 200, 8, 0, 100) == 100);
+        Check("volume slider: the same point always gives the same level (no dependence on the previous value)",
+              Enumerable.Range(0, 5).Select(_ => VolumeFlyout.LevelFromX(137, 200, 8, 0, 100)).Distinct().Count() == 1);
+
         // ---- closed by an installer, started again afterwards ----
         Check("restart after updates: '--replace', and not after a crash, a hang or a restart of the PC",
               AppRestart.CommandLine == "--replace" && AppRestart.Flags == (1 | 2 | 8));

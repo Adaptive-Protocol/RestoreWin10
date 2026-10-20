@@ -11,7 +11,7 @@
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="Button">
-            <Border x:Name="b" Background="{TemplateBinding Background}"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+            <Border x:Name="b" Background="{TemplateBinding Background}"><ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="Center"/></Border>
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="b" Property="Background" Value="{DynamicResource Hover}"/></Trigger>
             </ControlTemplate.Triggers>
@@ -52,15 +52,41 @@
 
   <Border x:Name="Pane" Background="{DynamicResource FlyoutBg}" Padding="12,10,12,8">
     <StackPanel>
-      <TextBlock x:Name="DeviceName" Foreground="{DynamicResource Fg}" FontSize="13" Margin="4,0,0,8" TextTrimming="CharacterEllipsis"/>
-      <Grid>
+      <!-- Windows 10: the device's name; with two or more playback devices it is a button with a chevron that opens the
+           list of devices, and choosing one makes it the default. -->
+      <Button x:Name="DeviceButton" Style="{StaticResource Flat}" HorizontalContentAlignment="Stretch" Margin="0,0,0,6"
+              Click="OnDeviceHeader" IsEnabled="False" Focusable="False">
+        <DockPanel Margin="4,4,4,4">
+          <TextBlock x:Name="DeviceChevron" DockPanel.Dock="Right" FontFamily="Segoe MDL2 Assets" FontSize="10" Margin="8,0,2,0"
+                     VerticalAlignment="Center" Foreground="{DynamicResource Fg}" Text="&#xE70E;" Visibility="Collapsed"/>
+          <TextBlock x:Name="DeviceName" Foreground="{DynamicResource Fg}" FontSize="13" TextTrimming="CharacterEllipsis"/>
+        </DockPanel>
+      </Button>
+      <ItemsControl x:Name="DeviceList" Visibility="Collapsed" Margin="0,0,0,6">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate>
+            <Button Style="{StaticResource Flat}" HorizontalContentAlignment="Stretch" Click="OnDeviceChosen" Tag="{Binding Id}" Focusable="False">
+              <DockPanel Margin="4,8,4,8">
+                <Rectangle DockPanel.Dock="Left" Width="3" Margin="0,0,10,0" Fill="{DynamicResource Accent}" Visibility="{Binding Marker}"/>
+                <TextBlock Text="{Binding Name}" Foreground="{DynamicResource Fg}" FontSize="13" TextTrimming="CharacterEllipsis"
+                           FontWeight="{Binding Weight}"/>
+              </DockPanel>
+            </Button>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+      <Grid x:Name="LevelRow">
         <Grid.ColumnDefinitions>
           <ColumnDefinition Width="40"/><ColumnDefinition Width="*"/><ColumnDefinition Width="48"/>
         </Grid.ColumnDefinitions>
         <Button Style="{StaticResource Flat}" Width="36" Height="36" Click="OnMute" ToolTip="Mute">
           <TextBlock x:Name="MuteGlyph" FontFamily="Segoe MDL2 Assets" FontSize="18" Foreground="{DynamicResource Fg}"/>
         </Button>
-        <Slider x:Name="Level" Grid.Column="1" Minimum="0" Maximum="100" IsMoveToPointEnabled="True" Margin="8,0" ValueChanged="OnLevel"/>
+        <!-- Press anywhere on the slider: it jumps there and follows the mouse until released (Windows 10). WPF's
+             IsMoveToPointEnabled only jumps; dragging then worked only from the 8-pixel thumb. -->
+        <Slider x:Name="Level" Grid.Column="1" Minimum="0" Maximum="100" Margin="8,0" ValueChanged="OnLevel"
+                PreviewMouseLeftButtonDown="OnLevelDown" PreviewMouseMove="OnLevelMove" PreviewMouseLeftButtonUp="OnLevelUp"
+                LostMouseCapture="OnLevelLost"/>
         <TextBlock x:Name="LevelText" Grid.Column="2" Foreground="{DynamicResource Fg}" FontSize="22" TextAlignment="Right" VerticalAlignment="Center"/>
       </Grid>
     </StackPanel>
