@@ -56,7 +56,6 @@ again when the update is done.
 
 * Windows 11 (developed and tested on build 26200, 64-bit)
 * [.NET 10 Desktop Runtime (x64)](https://dotnet.microsoft.com/download/dotnet/10.0); Microsoft Update keeps it patched
-* An administrator account for installing and uninstalling (the program itself runs without administrator rights)
 
 ## Installation
 
