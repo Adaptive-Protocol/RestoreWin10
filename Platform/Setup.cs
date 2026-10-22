@@ -12,8 +12,11 @@ namespace RestoreWin10;
 
 /// <summary>
 /// Installing and uninstalling RestoreWin10 for the whole PC (decision K2), and giving the Windows taskbar back.
-/// Runs from Program.Main before WPF loads, and shows only plain Windows message boxes.
+/// Runs from Program.Main. The elevated steps never load WPF and show only plain Windows message boxes; the install window
+/// (a downloaded RestoreWin10.exe opened without arguments) is WPF, and runs only as the user.
 /// <list type="bullet">
+/// <item>No arguments, not the installed copy: the install window (install, update, reinstall; an older version is refused),
+/// with one remembered choice, start at sign-in.</item>
 /// <item><c>--install</c>: as the user; asks once for administrator rights (UAC), then the elevated step below installs
 /// RestoreWin10 and starts it.</item>
 /// <item><c>--uninstall</c>: as the user; confirms, asks for administrator rights, then offers to restart (decision D7).</item>
@@ -40,10 +43,13 @@ static class Setup
     static string V1Dir => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), Name);
 
     // Exit codes between the two halves.
-    const int Ok = 0, Failed = 1, Cancelled = 2, OkRestartPending = 3;
+    internal const int Ok = 0, Failed = 1, Cancelled = 2, OkRestartPending = 3, NewerInstalled = 4;
 
     static string Version =>
         typeof(Setup).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion.Split('+')[0] ?? "2.0.0";
+
+    /// <summary>This process is the installed copy in Program Files (not a downloaded installer).</summary>
+    public static bool IsInstalledCopy => string.Equals(Environment.ProcessPath, InstalledExe, StringComparison.OrdinalIgnoreCase);
 
     public static int Run(string[] args)
     {
@@ -53,7 +59,9 @@ static class Setup
             Message("This is a development build of RestoreWin10. Only release builds can be installed, uninstalled or used for recovery.", MB_ICONINFORMATION, quiet);
             return Failed;
         }
-        if (args.Contains("--install-elevated")) return Elevated(quiet, InstallElevated);
+        // The elevated step takes only fixed switches: nothing in its command line is a path, a name or free text.
+        if (args.Contains("--install-elevated"))
+            return Elevated(quiet, () => InstallElevated(signIn: !args.Contains("--no-sign-in"), start: !args.Contains("--no-start")));
         if (args.Contains("--uninstall-elevated")) return Elevated(quiet, UninstallElevated);
         if (args.Contains("--install")) return Install(quiet);
         if (args.Contains("--uninstall")) return Uninstall(quiet);
@@ -61,15 +69,145 @@ static class Setup
         return Failed;
     }
 
+    // ---------- versions: install, update, reinstall, or refuse an older version ----------
+
+    public enum Plan { Install, Update, Reinstall, NewerInstalled }
+
+    /// <summary>"2.0.8" or "2.0.8+commit" as major.minor.build (what decides which version is newer); null if unreadable.</summary>
+    internal static System.Version? ParseVersion(string? s)
+    {
+        if (s == null || !System.Version.TryParse(s.Split('+')[0].Trim(), out var v)) return null;
+        return new System.Version(v.Major, v.Minor, Math.Max(v.Build, 0));
+    }
+
+    internal static System.Version OwnVersion => ParseVersion(Version) ?? new System.Version(0, 0, 0);
+
+    /// <summary>The version installed in Program Files, or null when none is (or it cannot be read).</summary>
+    internal static System.Version? InstalledVersion()
+    {
+        try { return File.Exists(InstalledExe) ? ParseVersion(FileVersionInfo.GetVersionInfo(InstalledExe).ProductVersion) : null; }
+        catch { return null; }
+    }
+
+    internal static Plan PlanFor(System.Version own, System.Version? installed) =>
+        installed == null ? Plan.Install : own > installed ? Plan.Update : own == installed ? Plan.Reinstall : Plan.NewerInstalled;
+
+    // ---------- the one remembered choice ----------
+
+    const string SignInValue = "StartAtSignIn";
+
+    /// <summary>Whether RestoreWin10 starts at sign-in, as chosen at the last install (on when never chosen). Only the
+    /// default of a check box: nothing else depends on it.</summary>
+    internal static bool RememberedSignIn()
+    {
+        try
+        {
+            using var k = Registry.LocalMachine.OpenSubKey(UninstallKey);
+            return k?.GetValue(SignInValue) is not int v || v != 0;
+        }
+        catch { return true; }
+    }
+
     // ---------- as the user ----------
+
+    /// <summary>Double-clicking a downloaded RestoreWin10.exe: the install window (release builds only).</summary>
+    public static int Wizard()
+    {
+        var w = new InstallWindow(OwnVersion, InstalledVersion(), RememberedSignIn());
+        w.ShowDialog();
+        return w.ExitCode;
+    }
 
     static int Install(bool quiet)
     {
-        int code = IsElevated ? Elevated(quiet, InstallElevated) : Elevate("--install-elevated", quiet);
+        if (PlanFor(OwnVersion, InstalledVersion()) == Plan.NewerInstalled)
+        {
+            Message($"A newer {Name} ({InstalledVersion()!.ToString(3)}) is already installed, so this installer ({OwnVersion.ToString(3)}) " +
+                    "changed nothing. To go back to this version, uninstall RestoreWin10 from Settings > Apps first.", MB_ICONINFORMATION, quiet);
+            return NewerInstalled;
+        }
+        int code = RunInstall(RememberedSignIn(), startAfter: true, quiet, out _);
         if (code == Ok)
             Message($"{Name} {Version} is installed in {InstallDir} and is starting now. It starts by itself when you sign in.\n\n" +
                     "To remove it, use Settings > Apps > Installed apps.", MB_ICONINFORMATION, quiet);
         return code;
+    }
+
+    /// <summary>
+    /// Installs or updates, shared by the install window and <c>--install</c>. A running RestoreWin10 is closed through
+    /// Windows' Restart Manager from this, the user's, side, and started again by it afterwards (or put back if the install
+    /// did not go through), so it always runs as the user and never with administrator rights. The elevated step's own close
+    /// request stays as the fallback. <paramref name="restarted"/>: Restart Manager started RestoreWin10 again.
+    /// </summary>
+    internal static int RunInstall(bool signIn, bool startAfter, bool quiet, out bool restarted)
+    {
+        restarted = false;
+        using var closer = ShellCloser.CloseRunning();
+        var step = new List<string> { "--install-elevated", "--no-start" };
+        if (!signIn) step.Add("--no-sign-in");
+        if (quiet) step.Add("--quiet");
+        int code = IsElevated ? Elevated(quiet, () => InstallElevated(signIn, start: false)) : Elevate(step, quiet);
+        if (closer != null) restarted = closer.Restart();   // also when the install did not go through: put back what ran
+        if (code == Ok && !restarted && startAfter) StartShell();
+        return code;
+    }
+
+    /// <summary>
+    /// Starts the installed RestoreWin10 as the user: through its sign-in task (the way it starts at sign-in), or, if this
+    /// account may not run the task directly, the program itself. Never with administrator rights.
+    /// </summary>
+    internal static void StartShell()
+    {
+        try { SignInTask.Run(); return; } catch { }
+        if (IsElevated || !File.Exists(InstalledExe)) return;
+        try
+        {
+            var psi = new ProcessStartInfo(InstalledExe) { UseShellExecute = false, WorkingDirectory = Launcher.System32 };
+            psi.ArgumentList.Add("--replace");
+            Process.Start(psi)?.Dispose();
+        }
+        catch { }
+    }
+
+    /// <summary>
+    /// Closes the installed RestoreWin10 the way installers do: Windows' Restart Manager asks it to close (never forced),
+    /// and after the install starts it again with the arguments it registered ("--replace", see AppRestart). Only from a
+    /// process without administrator rights, so the restarted shell is not elevated.
+    /// </summary>
+    sealed class ShellCloser : IDisposable
+    {
+        uint _session;
+        bool _closed;
+
+        /// <summary>Null when nothing is running, when this process is elevated, or when Restart Manager could not close
+        /// it (the elevated step then asks it to close itself).</summary>
+        public static ShellCloser? CloseRunning()
+        {
+            if (IsElevated || RunningShells().Count == 0) return null;
+            var c = new ShellCloser();
+            if (RmStartSession(out c._session, 0, new System.Text.StringBuilder(64)) != 0) return null;
+            if (RmRegisterResources(c._session, 1, new[] { InstalledExe }, 0, null, 0, null) != 0 || RmShutdown(c._session, 0, 0) != 0)
+            {
+                c.Dispose();
+                return null;
+            }
+            c._closed = true;
+            return c;
+        }
+
+        public bool Restart() => _closed && _session != 0 && RmRestart(_session, 0, 0) == 0;
+
+        public void Dispose()
+        {
+            if (_session != 0) RmEndSession(_session);
+            _session = 0;
+        }
+
+        [DllImport("rstrtmgr.dll", CharSet = CharSet.Unicode)] static extern int RmStartSession(out uint handle, int flags, System.Text.StringBuilder key);
+        [DllImport("rstrtmgr.dll", CharSet = CharSet.Unicode)] static extern int RmRegisterResources(uint handle, uint nFiles, string[] files, uint nApps, nint[]? apps, uint nServices, string[]? services);
+        [DllImport("rstrtmgr.dll")] static extern int RmShutdown(uint handle, uint flags, nint callback);
+        [DllImport("rstrtmgr.dll")] static extern int RmRestart(uint handle, int reserved, nint callback);
+        [DllImport("rstrtmgr.dll")] static extern int RmEndSession(uint handle);
     }
 
     static int Uninstall(bool quiet)
@@ -95,9 +233,15 @@ static class Setup
     /// <summary>Runs this exe again with administrator rights (one UAC prompt) and returns the elevated step's result.</summary>
     static int Elevate(string step, bool quiet)
     {
+        var args = new List<string> { step };
+        if (quiet) args.Add("--quiet");
+        return Elevate(args, quiet);
+    }
+
+    static int Elevate(List<string> args, bool quiet)
+    {
         var psi = new ProcessStartInfo(Environment.ProcessPath!) { UseShellExecute = true, Verb = "runas", WorkingDirectory = Launcher.System32 };
-        psi.ArgumentList.Add(step);
-        if (quiet) psi.ArgumentList.Add("--quiet");
+        foreach (var a in args) psi.ArgumentList.Add(a);
         try
         {
             using var p = Process.Start(psi)!;
@@ -149,16 +293,18 @@ static class Setup
         }
     }
 
-    static int InstallElevated()
+    static int InstallElevated(bool signIn, bool start)
     {
+        // Checked here as well as in the install window: an older version never replaces a newer one, however it was started.
+        if (PlanFor(OwnVersion, InstalledVersion()) == Plan.NewerInstalled) return NewerInstalled;
         byte[] program = ReadOwnImage();
         StopShells();
         PrepareFolder();
         WriteProgram(program);
-        WriteAppsEntry(program.Length);
+        WriteAppsEntry(program.Length, signIn);
         var user = WindowsIdentity.GetCurrent().User!;   // elevated, still this account (UAC elevates the same user)
-        SignInTask.Register(InstalledExe, user);
-        SignInTask.Run();                                // starts the shell as the user, not elevated
+        SignInTask.Register(InstalledExe, user, signIn);
+        if (start) SignInTask.Run();                     // starts the shell as the user, not elevated
         return Ok;
     }
 
@@ -254,7 +400,7 @@ static class Setup
     }
 
     /// <summary>The entry Settings > Apps shows for the PC, with the icon, version, size and Uninstall button.</summary>
-    static void WriteAppsEntry(long size)
+    static void WriteAppsEntry(long size, bool signIn)
     {
         using var k = Registry.LocalMachine.CreateSubKey(UninstallKey);
         k.SetValue("DisplayName", Name);
@@ -269,6 +415,7 @@ static class Setup
         k.SetValue("EstimatedSize", (int)((size + 1023) / 1024), RegistryValueKind.DWord);
         k.SetValue("NoModify", 1, RegistryValueKind.DWord);
         k.SetValue("NoRepair", 1, RegistryValueKind.DWord);
+        k.SetValue(SignInValue, signIn ? 1 : 0, RegistryValueKind.DWord);   // remembered for the next install or update
     }
 
     /// <summary>
@@ -355,13 +502,15 @@ static class SignInTask
         return service.GetFolder("\\");
     }
 
-    public static void Register(string exe, SecurityIdentifier user)
+    /// <param name="signIn">Start at sign-in (the install window's choice). Off: only the sign-in trigger is disabled; the
+    /// restart after a crash and starting the task by hand still work.</param>
+    public static void Register(string exe, SecurityIdentifier user, bool signIn = true)
     {
         dynamic root = RootFolder();
         DeleteIfPresent(root, TaskName);   // v1's per-user task, or an earlier v2 one
         // Administrators and SYSTEM may change it; this account may read and run it, but not change what it starts.
         string security = $"D:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;FRFX;;;{user.Value})";
-        root.RegisterTask(TaskName, Xml(exe, user), TASK_CREATE_OR_UPDATE, null, null, TASK_LOGON_INTERACTIVE_TOKEN, security);
+        root.RegisterTask(TaskName, Xml(exe, user, signIn), TASK_CREATE_OR_UPDATE, null, null, TASK_LOGON_INTERACTIVE_TOKEN, security);
     }
 
     public static void Run() => RootFolder().GetTask(TaskName).Run(null);
@@ -384,15 +533,16 @@ static class SignInTask
         "*[System[Provider[@Name='Application Error'] and EventID=1000]] and *[EventData[Data='RestoreWin10.exe']]" +
         "</Select></Query></QueryList>";
 
-    internal static string Xml(string exe, SecurityIdentifier user)
+    internal static string Xml(string exe, SecurityIdentifier user, bool signIn = true)
     {
         string sid = SecurityElement.Escape(user.Value)!;
+        string atSignIn = signIn ? "true" : "false";
         return $"""
             <?xml version="1.0" encoding="UTF-16"?>
             <Task version="1.3" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
               <RegistrationInfo><Description>Starts {TaskName} (Windows 10 Start menu and taskbar) when you sign in.</Description></RegistrationInfo>
               <Triggers>
-                <LogonTrigger><Enabled>true</Enabled><UserId>{sid}</UserId><Delay>PT8S</Delay></LogonTrigger>
+                <LogonTrigger><Enabled>{atSignIn}</Enabled><UserId>{sid}</UserId><Delay>PT8S</Delay></LogonTrigger>
                 <EventTrigger><Enabled>true</Enabled><Subscription>{SecurityElement.Escape(CrashQuery)}</Subscription><Delay>PT5S</Delay></EventTrigger>
               </Triggers>
               <Principals><Principal id="Author"><UserId>{sid}</UserId><LogonType>InteractiveToken</LogonType><RunLevel>LeastPrivilege</RunLevel></Principal></Principals>

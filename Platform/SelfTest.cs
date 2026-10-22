@@ -133,6 +133,27 @@ static class SelfTest
               xml.SelectSingleNode("//t:Principal/t:UserId", ns)?.InnerText == user.Value &&
               xml.SelectSingleNode("//t:Principal/t:RunLevel", ns)?.InnerText == "LeastPrivilege" &&
               xml.SelectSingleNode("//t:Settings/t:Priority", ns)?.InnerText == "4");
+        Check("sign-in task: starts at sign-in by default", xml.SelectSingleNode("//t:LogonTrigger/t:Enabled", ns)?.InnerText == "true");
+        var off = new System.Xml.XmlDocument();
+        off.LoadXml(SignInTask.Xml(@"C:\Program Files\RestoreWin10\RestoreWin10.exe", user, signIn: false));
+        Check("sign-in task: 'start at sign-in' off disables only the sign-in trigger (the crash restart stays)",
+              off.SelectSingleNode("//t:LogonTrigger/t:Enabled", ns)?.InnerText == "false" &&
+              off.SelectSingleNode("//t:EventTrigger/t:Enabled", ns)?.InnerText == "true");
+
+        // ---- the install window: which version replaces which, and when it opens ----
+        var v207 = new System.Version(2, 0, 7); var v208 = new System.Version(2, 0, 8);
+        Check("installer: nothing installed = install; older installed = update; same = reinstall",
+              Setup.PlanFor(v208, null) == Setup.Plan.Install && Setup.PlanFor(v208, v207) == Setup.Plan.Update &&
+              Setup.PlanFor(v208, v208) == Setup.Plan.Reinstall);
+        Check("installer: a newer installed version is never replaced by an older one", Setup.PlanFor(v207, v208) == Setup.Plan.NewerInstalled);
+        Check("installer: versions read from 'x.y.z+commit', and 2.0.10 is newer than 2.0.9",
+              Setup.ParseVersion("2.0.8+0673a8c") == v208 && Setup.ParseVersion("2.0.10") > Setup.ParseVersion("2.0.9") &&
+              Setup.ParseVersion("not a version") == null && Setup.ParseVersion(null) == null);
+        Check("installer window: a downloaded release copy opened without arguments",
+              Program.IsInstallerLaunch(dev: false, args: [], installedCopy: false));
+        Check("installer window: not for the installed copy, a development build, or any arguments (--preview, --install...)",
+              !Program.IsInstallerLaunch(false, [], installedCopy: true) && !Program.IsInstallerLaunch(true, [], false) &&
+              !Program.IsInstallerLaunch(false, ["--preview"], false) && !Program.IsInstallerLaunch(false, ["--install"], false));
         try
         {
             SignInTask.DeleteIfPresent(SignInTask.RootFolder(), "RestoreWin10.SelfTest.NoSuchTask");

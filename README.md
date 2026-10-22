@@ -64,15 +64,16 @@ again when the update is done.
    ```
    certutil -hashfile RestoreWin10.exe SHA256
    ```
-3. Install it:
-   ```
-   RestoreWin10.exe --install
-   ```
-   Approve the UAC prompt. The file is not code-signed, so Windows shows the publisher as "Unknown", and SmartScreen may
-   ask for confirmation the first time.
+3. Double-click `RestoreWin10.exe`. The install window says whether it will install, update (for example 2.0.8 → 2.0.9)
+   or reinstall, and lets you choose whether RestoreWin10 starts when you sign in. Choose **Install** and approve the UAC
+   prompt. The file is not code-signed, so Windows shows the publisher as "Unknown", and SmartScreen may ask for
+   confirmation the first time.
 
 The installer copies the program to `C:\Program Files\RestoreWin10`, adds RestoreWin10 to *Settings › Apps › Installed
-apps*, registers the sign-in task, and starts it. Running `--install` again with a newer file updates it.
+apps*, registers the sign-in task, and offers to start it. To update, run a newer `RestoreWin10.exe` the same way: a
+running RestoreWin10 closes for a moment and starts again by itself, and your choice about starting at sign-in is
+remembered. An older installer never replaces a newer version. For scripts, `RestoreWin10.exe --install` installs
+without the window.
 
 **Uninstall** from *Settings › Apps › Installed apps*, or with `RestoreWin10.exe --uninstall`. The Windows 11 Start menu
 and taskbar come back; your tiles and settings stay in `%APPDATA%\RestoreWin10` in case you install it again.
@@ -81,8 +82,9 @@ and taskbar come back; your tiles and settings stay in `%APPDATA%\RestoreWin10` 
 
 | Command | What it does |
 |---|---|
+| `RestoreWin10.exe` | A downloaded copy: opens the install window. The installed copy: starts RestoreWin10, or opens or closes Start when it is already running |
 | `RestoreWin10.exe --replace` | Normal use (what the sign-in task runs): replaces the Windows 11 taskbar |
-| `RestoreWin10.exe` | Preview: docks the taskbar at the top and leaves the Windows 11 taskbar alone; when already running, opens or closes Start |
+| `RestoreWin10.exe --preview` | Preview: docks the taskbar at the top and leaves the Windows 11 taskbar alone |
 | `RestoreWin10.exe --no-taskbar` | Start menu only |
 | `RestoreWin10.exe --exit` | Closes the running copy and gives the Windows taskbar back |
 | `RestoreWin10.exe --restore-taskbar` | Brings the Windows 11 taskbar back after RestoreWin10 was ended abruptly |
@@ -127,6 +129,10 @@ self-test:
 ```
 bin\Debug\net10.0-windows\RestoreWin10.exe --selftest
 ```
+
+To sign a release (Authenticode, SHA-256, with a timestamp so the signature stays valid after the certificate expires),
+run `tools\sign-release.ps1 -File publish\RestoreWin10.exe -Thumbprint <certificate thumbprint>` after publishing and
+before computing checksums. Without `-Thumbprint` it lists the code-signing certificates it can find and signs nothing.
 
 ### Project structure
 

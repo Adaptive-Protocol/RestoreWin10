@@ -90,6 +90,19 @@ public partial class App : Application
             Shutdown();
             return;
         }
+        // Layout check: the install window's pages drawn into PNGs, never shown; nothing is installed.
+        if (e.Args.FirstOrDefault(a => a.StartsWith("--render-installer=")) is { } ri)
+        {
+            var dir = ri["--render-installer=".Length..];
+            var v208 = new System.Version(2, 0, 8); var v209 = new System.Version(2, 0, 9);
+            new InstallWindow(v209, null, true).Snapshot(System.IO.Path.Combine(dir, "install_new.png"));
+            new InstallWindow(v209, v208, false).Snapshot(System.IO.Path.Combine(dir, "install_update.png"));
+            new InstallWindow(v208, v209, true).Snapshot(System.IO.Path.Combine(dir, "install_newer.png"));
+            new InstallWindow(v209, null, true).Snapshot(System.IO.Path.Combine(dir, "install_done.png"), done: true);
+            new InstallWindow(v209, v208, true).Snapshot(System.IO.Path.Combine(dir, "install_done_update.png"), done: true, restarted: true);
+            Shutdown();
+            return;
+        }
 #endif
 
         _menu = new StartMenu();
@@ -135,10 +148,12 @@ public partial class App : Application
 #endif
 
         // --replace : dock at the bottom and hide the native taskbar while running.
-        // default   : preview mode - dock at the top and leave the existing taskbar alone.
+        // --preview (or any other start of a copy that is not the installed one): dock at the top and leave the existing
+        //             taskbar alone. (A downloaded copy opened without arguments shows the install window instead: Program.cs.)
         // --no-taskbar : Start menu only.
         // A development copy always runs in preview mode, next to the installed RestoreWin10.
-        _replace = e.Args.Contains("--replace") && !Identity.Dev;
+        // The installed copy opened plainly (double-clicked in Program Files) starts as the sign-in task starts it.
+        _replace = (e.Args.Contains("--replace") || (e.Args.Length == 0 && Setup.IsInstalledCopy)) && !Identity.Dev;
         if (!_replace) TaskbarRecovery.RecoverAfterCrash();   // a last run that ended while replacing the taskbar is put right
         StartMenu.BarAtTop = !_replace && !e.Args.Contains("--no-taskbar");
         if (!e.Args.Contains("--no-taskbar"))

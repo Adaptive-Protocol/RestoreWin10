@@ -1,5 +1,21 @@
 # Changelog
 
+## 2.0.9 (2026-10-22)
+
+### Installing and updating
+
+* Double-click `RestoreWin10.exe` to install: an install window says whether it will install, update (for example
+  2.0.8 → 2.0.9) or reinstall, and offers "Start RestoreWin10 when I sign in" (remembered for the next update). The
+  finish page offers "Start RestoreWin10 now". There is no folder choice: RestoreWin10 always goes into Program Files,
+  where only administrators can change it.
+* Updating closes a running RestoreWin10 through Windows' Restart Manager and starts it again by itself afterwards,
+  always with your normal rights.
+* An older installer never replaces a newer installed version; the window says so and changes nothing.
+* The installed copy opened by double-click starts RestoreWin10 (replacing the taskbar); the preview is now
+  `--preview`. `--install` still installs without the window, for scripts.
+* `tools\sign-release.ps1` signs and timestamps a release once a code-signing certificate is available. Releases are
+  still unsigned for now, so check the SHA-256 before installing.
+
 ## 2.0.8 (2026-10-20)
 
 ### Volume flyout
