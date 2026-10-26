@@ -9,7 +9,7 @@ static class Win
     public const int GWL_EXSTYLE = -20, GW_OWNER = 4, GA_ROOT = 2, GA_ROOTOWNER = 3;
     public const int WS_EX_TOOLWINDOW = 0x80, WS_EX_APPWINDOW = 0x40000, WS_EX_NOACTIVATE = 0x08000000;
     public const int SW_HIDE = 0, SW_SHOW = 5, SW_MINIMIZE = 6, SW_RESTORE = 9;
-    public const uint WM_CLOSE = 0x10, SWP_NOSIZE = 0x1, SWP_NOMOVE = 0x2, SWP_NOZORDER = 0x4, SWP_NOACTIVATE = 0x10, SWP_SHOWWINDOW = 0x40;
+    public const uint WM_CLOSE = 0x10, WM_SYSCOMMAND = 0x112, SC_MINIMIZE = 0xF020, SWP_NOSIZE = 0x1, SWP_NOMOVE = 0x2, SWP_NOZORDER = 0x4, SWP_NOACTIVATE = 0x10, SWP_SHOWWINDOW = 0x40;
     public const int ABM_NEW = 0, ABM_REMOVE = 1, ABM_QUERYPOS = 2, ABM_SETPOS = 3, ABM_GETSTATE = 4, ABM_SETSTATE = 10;
     public const int ABN_POSCHANGED = 1, ABS_AUTOHIDE = 1;
     public const uint ABE_TOP = 1, ABE_BOTTOM = 3;
@@ -33,7 +33,10 @@ static class Win
     /// <summary>Waits for the window's program to act on it: only for RestoreWin10's own windows (see <see cref="OffUiThread"/>).</summary>
     [DllImport("user32.dll")] public static extern bool ShowWindow(nint h, int cmd);
     /// <summary>Hands the request to the window's program and returns at once: for every other program's window.</summary>
-    [DllImport("user32.dll")] public static extern bool ShowWindowAsync(nint h, int cmd);
+    [DllImport("user32.dll", SetLastError = true)] public static extern bool ShowWindowAsync(nint h, int cmd);
+    /// <summary>Switches to a window as Alt+Tab does, restoring it if minimised; allowed for windows of programs with higher rights.</summary>
+    [DllImport("user32.dll")] static extern void SwitchToThisWindow(nint h, bool altTab);
+    const int ERROR_ACCESS_DENIED = 5;
     [DllImport("user32.dll")] public static extern bool BringWindowToTop(nint h);
     [DllImport("user32.dll")] public static extern nint SendMessage(nint h, uint msg, nint w, nint l);
     [DllImport("user32.dll")] public static extern bool PostMessage(nint h, uint msg, nint w, nint l);
@@ -193,10 +196,16 @@ static class Win
     /// <summary>Requests still waiting on programs that do not respond (for the self-test and diagnostics).</summary>
     internal static int WaitingRequests => Volatile.Read(ref s_waiting);
 
+    // Windows refuses ShowWindowAsync (access denied) on windows of programs with higher rights than RestoreWin10: programs
+    // running as administrator, and the placeholder a UAC prompt leaves on the taskbar when it may not take the screen
+    // (consent.exe, running as SYSTEM). Clicking their buttons then did nothing, and a waiting UAC prompt could not be
+    // opened. Windows does allow switching to such a window and posting it a minimise command, as Explorer's taskbar does.
+
     /// <summary>Switches to another program's window, restoring it if minimised, without the UI thread waiting on it.</summary>
     public static void ActivateOther(nint h) => OffUiThread(() =>
     {
-        if (IsIconic(h)) ShowWindowAsync(h, SW_RESTORE);
+        if (IsIconic(h) && !ShowWindowAsync(h, SW_RESTORE) && Marshal.GetLastPInvokeError() == ERROR_ACCESS_DENIED)
+            SwitchToThisWindow(h, true);   // restores it and brings it forward; a UAC placeholder then shows its prompt
         if (SetForegroundWindow(h)) return;
         var fg = GetForegroundWindow();
         if (fg == 0 || IsHungAppWindow(fg) || IsHungAppWindow(h)) return;   // never share input with a frozen program
@@ -207,7 +216,11 @@ static class Win
     }, "switching to a window");
 
     /// <summary>Minimises another program's window without waiting for it.</summary>
-    public static void MinimizeOther(nint h) => ShowWindowAsync(h, SW_MINIMIZE);
+    public static void MinimizeOther(nint h)
+    {
+        if (!ShowWindowAsync(h, SW_MINIMIZE) && Marshal.GetLastPInvokeError() == ERROR_ACCESS_DENIED)
+            PostMessage(h, WM_SYSCOMMAND, (nint)SC_MINIMIZE, 0);   // posted, so it never waits either
+    }
 
     /// <summary>Press a Windows-key shortcut (e.g. Win+D) on the user's behalf.</summary>
     public static void WinCombo(byte key)

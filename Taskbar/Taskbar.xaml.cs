@@ -786,6 +786,14 @@ public partial class Taskbar : Window
     {
         PopupGuard.Watch(m, PopupGuard.MenuOf(_hwnd, m), () => m.IsOpen = false);
         m.Closed += (_, _) => { PopupGuard.Unwatch(m); MemoryTrim.Schedule(); };   // a jump list's icons and menu go
+        // The taskbar never takes the keyboard (it would take it from the program in front), so its menus did not get
+        // it either and Esc went to that program. As in Windows 10, an open menu takes the keyboard (Esc, arrows, Enter);
+        // the user has just clicked the taskbar, so Windows allows it, and gives it back to the program on closing.
+        m.Opened += (_, _) =>
+        {
+            if (PresentationSource.FromVisual(m) is HwndSource src) Win.Activate(src.Handle);
+            m.Focus();
+        };
         m.IsOpen = true;
     }
 

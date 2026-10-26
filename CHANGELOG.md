@@ -1,5 +1,23 @@
 # Changelog
 
+## 2.0.10 (2026-10-26)
+
+### Taskbar
+
+* A UAC prompt waiting on the taskbar opens again when its button is clicked. When a program in the background (an
+  installer, for example) asks for permission, Windows puts a flashing button on the taskbar instead of showing the
+  prompt at once; clicking it did nothing, because Windows refuses the usual restore request from a program with
+  normal rights to a window with more. The same applied to minimised programs running as administrator (Task
+  Manager, for example). RestoreWin10 now switches to such windows the way Alt+Tab does, and minimising them from
+  their button works again too.
+* Esc closes a jump list or taskbar menu, and the arrow keys and Enter work in it, as in Windows 10.
+
+### Performance
+
+* Fixed a handle leak: each time File Explorer was started from the taskbar or Start, RestoreWin10 kept some of the
+  shell's registry handles open (about 800 after a few days of use). Windows' File Explorer and Control Panel
+  shortcuts point at a shell folder rather than a program; they are now started as their program directly.
+
 ## 2.0.9 (2026-10-22)
 
 ### Installing and updating

@@ -27,6 +27,7 @@ public partial class App : Application
 
 #if DEV_BUILD
         if (e.Args.Contains("--selftest")) { Shutdown(SelfTest.Run()); return; }   // checks only: nothing is started or shown
+        if (e.Args.Contains("--leakprobe")) { Shutdown(LeakProbe.Run()); return; }   // the jump list's steps, counting leaked handles
         Battery.FakeFrom(e.Args);   // a desktop PC has no battery: the icon can be tried with --fake-battery=57[,ac|,saver]
         if (e.Args.Contains("--software")) System.Windows.Media.RenderOptions.ProcessRenderMode = System.Windows.Interop.RenderMode.SoftwareOnly;
         // Crash test (Phase 8): a fatal error 3 seconds after start, so Windows records the crash the sign-in task listens for.

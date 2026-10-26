@@ -95,6 +95,13 @@ static class Launcher
         if (argument != null && (argument.IndexOfAny(Unsafe) >= 0 || !Path.IsPathFullyQualified(argument)))
         { Refused("not a full path", argument); return false; }
 
+        if (verb == null && ShellFolderProgram(target) is { } program)
+        {
+            var direct = new ProcessStartInfo(program) { UseShellExecute = true, WorkingDirectory = System32 };
+            if (argument != null) direct.ArgumentList.Add(argument);
+            return Start(direct);
+        }
+
         var psi = new ProcessStartInfo(target) { UseShellExecute = true };
         // A program starts in its own folder, as when it is double-clicked; a shortcut brings its own "Start in".
         psi.WorkingDirectory = !store && target.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
@@ -176,9 +183,33 @@ static class Launcher
 
     static bool Start(ProcessStartInfo psi)
     {
+        psi.UseShellExecute = ThroughShell(psi);
         try { Process.Start(psi)?.Dispose(); return true; }
         catch (System.ComponentModel.Win32Exception ex) when (ex.NativeErrorCode == 1223) { return false; }   // UAC prompt declined
         catch (Exception ex) { CrashLog.Write("starting " + psi.FileName, ex); return false; }
+    }
+
+    /// <summary>
+    /// Whether <paramref name="psi"/> goes through the shell. File Explorer itself is started directly: the shell opens
+    /// explorer.exe's folder window from inside the calling process and leaves the folder's verb handlers open there,
+    /// one set per window (about 800 registry handles after a few days of use).
+    /// </summary>
+    internal static bool ThroughShell(ProcessStartInfo psi) =>
+        psi.UseShellExecute && !(string.IsNullOrEmpty(psi.Verb) && Path.IsPathFullyQualified(psi.FileName) &&
+                                 string.Equals(Path.GetFullPath(psi.FileName), Explorer, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// Windows' own File Explorer and Control Panel shortcuts (taskbar pins, Start) point at a shell folder, not a program.
+    /// Started through the shell they open that folder from inside RestoreWin10, with the leak <see cref="ThroughShell"/>
+    /// describes, so they are started as their program instead. Null for every other shortcut.
+    /// </summary>
+    internal static string? ShellFolderProgram(string lnk)
+    {
+        if (!lnk.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase)) return null;
+        var name = Path.GetFileNameWithoutExtension(lnk);
+        var program = name.Equals("File Explorer", StringComparison.OrdinalIgnoreCase) ? Explorer
+                    : name.Equals("Control Panel", StringComparison.OrdinalIgnoreCase) ? Sys("control.exe") : null;
+        return program != null && Shortcut.Read(lnk) is { Target.Length: 0 } ? program : null;
     }
 
     static void Refused(string why, string what) => CrashLog.Note($"refused to start ({why}): {what}");

@@ -47,6 +47,13 @@ static class SelfTest
             ("", false),
         })
             Check($"IsLaunchable({(path.Length == 0 ? "(empty)" : path)}) = {expected}", Launcher.IsLaunchable(path) == expected);
+        Check("File Explorer is started directly, not through the shell",
+              !Launcher.ThroughShell(new(@"C:\WINDOWS\explorer.exe") { UseShellExecute = true }) &&
+              !Launcher.ThroughShell(new(Launcher.Explorer) { UseShellExecute = true }));
+        Check("other programs, File Explorer with a verb and Settings addresses still go through the shell",
+              Launcher.ThroughShell(new(@"C:\Windows\System32\notepad.exe") { UseShellExecute = true }) &&
+              Launcher.ThroughShell(new(Launcher.Explorer) { UseShellExecute = true, Verb = "runas" }) &&
+              Launcher.ThroughShell(new("ms-settings:home") { UseShellExecute = true }));
 
         // ---- state.json validation ----
         const string json = """
