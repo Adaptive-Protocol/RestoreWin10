@@ -4,97 +4,53 @@
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-**RestoreWin10** brings the Windows 10 Start menu and taskbar back to Windows 11. It is written from scratch in C#
-(.NET 10, WPF) and runs as its own program: it never injects code into Explorer, so Windows updates cannot break it the
-way they break injection-based shell tools.
+**RestoreWin10** brings the Windows 10 Start menu and taskbar back to Windows 11.
 
-It was built security-first: it installs into Program Files with one administrator prompt, runs without administrator
-rights, starts programs only by full path, and treats every file other programs can write as untrusted.
-
-## How it works
-
-At sign-in, a scheduled task starts RestoreWin10 for your account. It hides the Windows 11 taskbar, docks its own
-Windows 10 style taskbar at the bottom of every screen, and hosts the notification area; the Windows key and the Start
-button open the Windows 10 Start menu. RestoreWin10 follows Windows' own settings (light or dark mode, accent colour,
-transparency, taskbar and Start options), so the Settings app keeps working as you expect.
-
-If RestoreWin10 is closed, Windows' own taskbar comes back. If it crashes, it is started again a few seconds later, and
-if an installer or update closes it (for example an Office update replacing a file it has open), Windows starts it
-again when the update is done.
-
-## Key features
-
-**Start menu**
-
-* **Windows 10 app list**: "Recently added" at the top, "Most used" (when enabled in Windows), `&`, `#` and A–Z groups,
-  Start Menu folders that open in place, and the letter grid for jumping
-* **Live updates**: programs you install or remove appear and disappear without a restart, Store apps included
-* **Tiles**: theme-aware tiles in groups; drag to reorder, create groups, move whole groups by their handle,
-  resize, and drop one tile onto another to make a **tile folder**
-* **Left strip**: account panel (lock, sign out, switch user), power panel (sleep, hibernate, shut down, restart,
-  "update and …"), and the folders chosen in *Settings › Personalization › Start › Folders*
-* **Search**: finds apps by name or program name (`regedit`) and anything the Run box would start (`services.msc`);
-  Enter starts only a recognised result
-
-**Taskbar**
-
-* **Windows 10 look**: Windows 10 logo, search icon, Task View, program buttons with the accent-tinted line under running
-  programs, two-line clock, notifications button and show-desktop strip
-* **Styles**: *Clear* (the wallpaper shows through), *Acrylic*, *Opaque* or *Normal* (follows Windows), from the
-  taskbar's right-click menu; the normal look returns while Start, Search or Task View is open
-* **Program buttons**: your Windows taskbar pins carried over, live thumbnails, drag to reorder, attention flashing;
-  pin any app from Start, Store apps included (they are pinned by app ID, so the pin survives their updates)
-* **Jump lists**: pinned and recent items, File Explorer's pinned folders, and each program's own tasks
-  (Firefox: *New private window*); every task shows what it runs
-* **Notification area**: program tray icons (with the `^` overflow as a square grid), volume flyout, network, and a
-  battery icon on PCs that have a battery
-* **Volume flyout**: with two or more playback devices connected, click the device name to choose between them, as
-  in Windows 10; the slider follows the mouse from wherever you press, and the Windows sound plays when you let go
-* **Several screens**: a taskbar on every screen, following Windows' multiple-display settings
+- Runs as its own program: nothing is injected into Explorer, so Windows updates don't break it.
+- Built security-first: installs into Program Files, runs without administrator rights.
 
 ## Requirements
 
-* Windows 11 (developed and tested on build 26200, 64-bit)
-* [.NET 10 Desktop Runtime (x64)](https://dotnet.microsoft.com/download/dotnet/10.0); Microsoft Update keeps it patched
+- Windows 11, 64-bit (tested on build 26200)
+- [.NET 10 Desktop Runtime (x64)](https://dotnet.microsoft.com/download/dotnet/10.0)
 
-## Installation
+## Install, update, uninstall
 
 1. Download `RestoreWin10.exe` from the [latest release](../../releases/latest).
-2. Check that the file is the one published (the release lists its SHA-256):
-   ```
-   certutil -hashfile RestoreWin10.exe SHA256
-   ```
-3. Double-click `RestoreWin10.exe`. The install window says whether it will install, update (for example 2.0.8 → 2.0.9)
-   or reinstall, and lets you choose whether RestoreWin10 starts when you sign in. Choose **Install** and approve the UAC
-   prompt. The file is not code-signed, so Windows shows the publisher as "Unknown", and SmartScreen may ask for
-   confirmation the first time.
+2. Check it: `certutil -hashfile RestoreWin10.exe SHA256` must match `SHA256SUMS.txt`.
+3. Double-click it, choose **Install** and approve the UAC prompt.
 
-The installer copies the program to `C:\Program Files\RestoreWin10`, adds RestoreWin10 to *Settings › Apps › Installed
-apps*, registers the sign-in task, and offers to start it. To update, run a newer `RestoreWin10.exe` the same way: a
-running RestoreWin10 closes for a moment and starts again by itself, and your choice about starting at sign-in is
-remembered. An older installer never replaces a newer version. For scripts, `RestoreWin10.exe --install` installs
-without the window.
+- **Update:** run a newer `RestoreWin10.exe` the same way. It restarts by itself; your settings are kept.
+- **Uninstall:** *Settings › Apps › Installed apps*. Windows' own Start menu and taskbar come back.
+- The file is not code-signed, so Windows shows the publisher as "Unknown" and SmartScreen may ask once.
 
-**Uninstall** from *Settings › Apps › Installed apps*, or with `RestoreWin10.exe --uninstall`. The Windows 11 Start menu
-and taskbar come back; your tiles and settings stay in `%APPDATA%\RestoreWin10` in case you install it again.
+## Features
+
+**Start menu**
+- Windows 10 app list: Recently added, Most used, A–Z with the letter grid
+- Tiles in groups, tile folders, drag to rearrange
+- Account and power menus, your Start folders, search (apps and Run-box commands)
+
+**Taskbar**
+- Windows 10 look, with Clear, Acrylic, Opaque or Normal styles
+- Pinned programs and Store apps, live previews, jump lists
+- Notification area with volume (device switcher), network and battery
+- A taskbar on every screen
 
 ## Usage
 
 | Command | What it does |
 |---|---|
-| `RestoreWin10.exe` | A downloaded copy: opens the install window. The installed copy: starts RestoreWin10, or opens or closes Start when it is already running |
-| `RestoreWin10.exe --replace` | Normal use (what the sign-in task runs): replaces the Windows 11 taskbar |
-| `RestoreWin10.exe --preview` | Preview: docks the taskbar at the top and leaves the Windows 11 taskbar alone |
-| `RestoreWin10.exe --no-taskbar` | Start menu only |
-| `RestoreWin10.exe --exit` | Closes the running copy and gives the Windows taskbar back |
-| `RestoreWin10.exe --restore-taskbar` | Brings the Windows 11 taskbar back after RestoreWin10 was ended abruptly |
-| `--install`, `--uninstall` | Install or remove (add `--quiet` to skip message boxes) |
+| `RestoreWin10.exe` | Downloaded copy: opens the installer. Installed copy: starts RestoreWin10 |
+| `--preview` | Taskbar at the top, Windows' taskbar left alone |
+| `--no-taskbar` | Start menu only |
+| `--exit` | Closes RestoreWin10 and gives Windows' taskbar back |
+| `--restore-taskbar` | Brings Windows' taskbar back after an abrupt end |
+| `--install`, `--uninstall` | Without the window (add `--quiet` for no message boxes) |
 
-Right-click an empty part of the taskbar for the Windows 10 taskbar menu, including **Taskbar appearance**.
-Right-click the Start button for the Win+X menu. Ctrl+click an icon in the `^` panel to pin it to the taskbar.
-
-Settings and diagnostics live in `%APPDATA%\RestoreWin10`: `state.json` (tiles, pins), `crash.log`, `tray.log` and
-`dock.log`.
+- Right-click the taskbar for its menu and **Taskbar appearance**.
+- Right-click the Start button for the Win+X menu.
+- Settings and logs: `%APPDATA%\RestoreWin10`.
 
 ## Security
 
@@ -114,55 +70,30 @@ Code comments refer to the findings of an internal threat-model review by ID (fo
 [Security › Report a vulnerability](../../security/advisories/new), not as a public issue, so that it can be fixed
 before it becomes known. Use [issues](../../issues) for everything else.
 
-## Building from source
-
-Requires the .NET SDK 10.0.401 or later in the 10.0 band (pinned in `global.json`).
-
-```
-dotnet publish -c Release -o publish
-```
-
-The result is the single file `publish\RestoreWin10.exe`. A debug build (`dotnet build`) is a development copy: it runs
-beside an installed RestoreWin10 with its own settings (`%APPDATA%\RestoreWin10.Dev`), never installs itself, and has a
-self-test:
-
-```
-bin\Debug\net10.0-windows\RestoreWin10.exe --selftest
-```
-
-To sign a release (Authenticode, SHA-256, with a timestamp so the signature stays valid after the certificate expires),
-run `tools\sign-release.ps1 -File publish\RestoreWin10.exe -Thumbprint <certificate thumbprint>` after publishing and
-before computing checksums. Without `-Thumbprint` it lists the code-signing certificates it can find and signs nothing.
-
-### Project structure
-
-| Folder | Contents |
-|---|---|
-| `Start\` | Start menu: app list, tiles and folders, search, the left strip |
-| `Taskbar\` | Taskbars, program buttons, thumbnails, jump lists, search box |
-| `NotificationArea\` | Tray host, `^` overflow, volume flyout, battery |
-| `Platform\` | Launching, installer, hardening, screens, app-bar docking, personalization, session actions |
-| `Assets\` | Icon |
-
 ## Troubleshooting
 
-* **The Windows key does nothing**: check your keyboard's game mode (many gaming keyboards turn the Windows key off
-  in it). Windows also does not pass keys to RestoreWin10 while a program running as administrator is in front.
-* **The Windows taskbar stays on auto-hide** after RestoreWin10 was ended from Task Manager: run
-  `RestoreWin10.exe --restore-taskbar`.
-* **Something went wrong**: see `%APPDATA%\RestoreWin10\crash.log`.
+- **Windows key does nothing:** check your keyboard's game mode. Windows also blocks it while an administrator program is in front.
+- **Windows' taskbar stays hidden** after RestoreWin10 was ended in Task Manager: run `RestoreWin10.exe --restore-taskbar`.
+- **Something went wrong:** see `%APPDATA%\RestoreWin10\crash.log`.
 
 ## Known limitations
 
-* No notification count on the notifications button (Windows gives it only to packaged apps with a special permission)
-* System tray icons such as Bluetooth are not hosted; battery, sound and network are RestoreWin10's own
-* The taskbar is always at the bottom and locked
-* Explorer's file-window ribbon cannot be restored without injecting into Explorer
+- No notification count on the notifications button
+- System tray icons such as Bluetooth are not hosted
+- Taskbar is always at the bottom and locked
+- Explorer's ribbon can't be restored without injecting into Explorer
+
+## Building from source
+
+- Needs the .NET SDK 10.0.401 or later (pinned in `global.json`).
+- `dotnet publish -c Release -o publish` produces `publish\RestoreWin10.exe`.
+- A debug build runs beside an installed copy with its own settings; self-test: `RestoreWin10.exe --selftest`.
+- Signing: `tools\sign-release.ps1 -File publish\RestoreWin10.exe -Thumbprint <thumbprint>`.
 
 ## Acknowledgements
 
-The taskbar styles follow the ideas of [TranslucentTB](https://github.com/TranslucentTB/TranslucentTB) (no code is
-shared). Windows, Windows 10 and Windows 11 are trademarks of Microsoft.
+Taskbar styles follow the ideas of [TranslucentTB](https://github.com/TranslucentTB/TranslucentTB) (no shared code).
+Windows is a trademark of Microsoft.
 
 ## License
 
