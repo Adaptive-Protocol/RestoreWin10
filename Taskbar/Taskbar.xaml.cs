@@ -45,7 +45,7 @@ public partial class Taskbar : Window
             pv.PointerEntered += () => _leaveTimer.Stop();
             pv.PointerLeft += () => _leaveTimer.Start();
             pv.WindowChosen += h => { pv.Dismiss(); DismissStart(); Win.ActivateOther(h); };
-            pv.CloseRequested += Win.CloseWindow;
+            pv.CloseRequested += h => { Win.CloseWindow(h); pv.LeaveOut(h); ShowPreview(); };   // its card goes at once
             return _preview = pv;
         }
     }
@@ -1083,7 +1083,7 @@ public partial class Taskbar : Window
     {
         if (_preview?.IsVisible != true || _hoverItem == null) return;
         if (!_hoverItem.IsRunning) { _preview?.Dismiss(); return; }
-        if (!_hoverItem.Windows.SequenceEqual(_preview!.Current)) ShowPreview();
+        if (!_preview!.Showing(_hoverItem).SequenceEqual(_preview.Current)) ShowPreview();
     }
 
     void OnTaskClick(object s, MouseButtonEventArgs e)

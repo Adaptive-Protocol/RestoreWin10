@@ -84,6 +84,8 @@ static class Win
     [DllImport("user32.dll")] public static extern bool DeregisterShellHookWindow(nint h);
     [DllImport("user32.dll")] public static extern bool IsHungAppWindow(nint h);
     [DllImport("user32.dll")] public static extern bool EndTask(nint h, bool shutDown, bool force);
+    /// <summary>With <paramref name="convert"/>, makes the calling thread a GUI thread (one with a desktop) if it is not one yet.</summary>
+    [DllImport("user32.dll")] public static extern bool IsGUIThread(bool convert);
     [DllImport("user32.dll")] static extern nint HungWindowFromGhostWindow(nint ghost);
     [DllImport("user32.dll")] static extern nint GhostWindowFromHungWindow(nint hung);
 
@@ -187,6 +189,12 @@ static class Win
         Interlocked.Increment(ref s_waiting);
         new Thread(() =>
         {
+            // EndTask asks Windows' session server to close the window, and the server finds the window through the
+            // calling thread's desktop, which a new thread only gets with its first window call (EndTask is not one).
+            // From a new thread EndTask therefore failed with "invalid handle": since 2.0.4, Close and the preview's X
+            // did nothing for programs running as administrator and for frozen programs. Every request starts as a
+            // GUI thread.
+            IsGUIThread(true);
             try { work(); }
             catch (Exception ex) { CrashLog.Note($"{what} failed: {ex.GetType().Name}"); }
             finally { Interlocked.Decrement(ref s_waiting); }

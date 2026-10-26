@@ -377,6 +377,44 @@ static class SelfTest
             while (Win.WaitingRequests > before && DateTime.Now < deadline) Thread.Sleep(50);
             Check("waiting requests are released", Win.WaitingRequests == before);
         }
+        // ---- closing through EndTask (programs running as administrator, frozen programs) works from a request ----
+        {
+            using var created = new ManualResetEventSlim();
+            nint target = 0;
+            var owner = new Thread(() =>
+            {
+                // Hidden and off-screen, answering messages; EndTask asks it to close, as it would a program's window.
+                var src = new System.Windows.Interop.HwndSource(new System.Windows.Interop.HwndSourceParameters("RestoreWin10.SelfTest.Close")
+                    { WindowStyle = unchecked((int)0x80000000) /* WS_POPUP, not visible */, PositionX = -32000, PositionY = -32000, Width = 10, Height = 10 });
+                target = src.Handle;
+                src.Disposed += (_, _) => System.Windows.Threading.Dispatcher.CurrentDispatcher.BeginInvokeShutdown(System.Windows.Threading.DispatcherPriority.Send);
+                created.Set();
+                System.Windows.Threading.Dispatcher.Run();
+            }) { IsBackground = true };
+            owner.SetApartmentState(ApartmentState.STA);
+            owner.Start();
+            created.Wait(5_000);
+            bool gui = false, ended = false;
+            using var done = new ManualResetEventSlim();
+            Win.OffUiThread(() => { gui = Win.IsGUIThread(false); ended = Win.EndTask(target, false, false); done.Set(); }, "self-test");
+            done.Wait(5_000);
+            var deadline = DateTime.Now.AddSeconds(5);
+            while (Win.IsWindow(target) && DateTime.Now < deadline) Thread.Sleep(50);
+            Check("window requests run as GUI threads", gui);
+            Check("EndTask from a window request closes the window (from a new thread it failed: invalid handle)", ended && !Win.IsWindow(target));
+            owner.Join(2_000);
+        }
+        // ---- the preview drops a window's card as soon as its X is clicked ----
+        {
+            var pv = new ThumbnailPopup();   // never shown
+            var item = new TaskItem { Key = "self-test" };
+            item.SetWindows(new List<nint> { 101, 102 });
+            pv.LeaveOut(101);
+            Check("preview: a window whose X was clicked is left out at once", pv.Showing(item).SequenceEqual(new nint[] { 102 }));
+            pv.Dismiss();
+            Check("preview: it is back the next time (a program asking to save keeps its window)", pv.Showing(item).SequenceEqual(new nint[] { 101, 102 }));
+            pv.Close();
+        }
 
         Check("tray: only System32's SecurityHealthSystray.exe counts as Windows Security",
               TrayHost.IsWindowsSecurity(new TrayIcon { Owner = Path.Combine(Environment.SystemDirectory, "SecurityHealthSystray.exe") }) &&

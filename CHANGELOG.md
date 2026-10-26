@@ -1,5 +1,19 @@
 # Changelog
 
+## 2.0.11 (2026-10-26)
+
+### Taskbar
+
+* The preview's X and "Close window" close programs running as administrator (Task Manager, for example) and
+  programs that do not respond again. Since 2.0.4 they did nothing for these windows: closing them goes through
+  Windows' own "end task" request, which failed when sent from the background thread the taskbar uses so that a
+  frozen program cannot freeze it. Checked in every window state (normal, maximised, minimised from either),
+  for ordinary programs and programs running as administrator; a program that does not respond gets Windows'
+  own question whether to end it.
+* As in Windows 10, a window's preview disappears as soon as its X is clicked, instead of when the program has
+  closed and the taskbar next noticed. A program that asks to save keeps its window, and it is in the preview
+  again the next time.
+
 ## 2.0.10 (2026-10-26)
 
 ### Taskbar

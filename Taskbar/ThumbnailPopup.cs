@@ -16,7 +16,17 @@ public sealed class ThumbnailPopup : Window
 
     readonly List<nint> _thumbs = new();
     readonly List<(nint src, Border slot)> _slots = new();
+    // Windows whose X was clicked in this preview. Their cards go at once, as in Windows 10, instead of when the
+    // program has closed and the next refresh notices (up to half a second later). Forgotten when the preview closes,
+    // so a window that stays (a program asking to save) is in the preview again next time.
+    readonly HashSet<nint> _closing = new();
     public IReadOnlyList<nint> Current { get; private set; } = Array.Empty<nint>();
+
+    /// <summary>The windows of <paramref name="item"/> this preview shows: all but those whose X was just clicked.</summary>
+    public List<nint> Showing(TaskItem item) => item.Windows.Where(w => !_closing.Contains(w)).ToList();
+
+    /// <summary>Leaves <paramref name="hwnd"/> out of this preview from now on: its close has just been asked for.</summary>
+    public void LeaveOut(nint hwnd) => _closing.Add(hwnd);
 
     public event Action<nint>? WindowChosen;
     public event Action<nint>? CloseRequested;
@@ -50,7 +60,8 @@ public sealed class ThumbnailPopup : Window
     public void Present(TaskItem item, Rect anchorPx, bool above)
     {
         ReleaseThumbnails();
-        Current = item.Windows.ToList();
+        Current = Showing(item);
+        if (Current.Count == 0) { Dismiss(); return; }
 
         var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(4) };
         foreach (var h in Current) row.Children.Add(BuildCard(item, h));
@@ -147,6 +158,7 @@ public sealed class ThumbnailPopup : Window
     public void Dismiss()
     {
         ReleaseThumbnails();
+        _closing.Clear();
         Current = Array.Empty<nint>();
         if (IsVisible) Hide();
     }
