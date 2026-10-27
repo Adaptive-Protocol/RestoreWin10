@@ -42,7 +42,7 @@ public partial class Taskbar : Window
         {
             if (_preview != null) return _preview;
             var pv = new ThumbnailPopup();
-            pv.PointerEntered += () => _leaveTimer.Stop();
+            pv.PointerEntered += () => { _leaveTimer.Stop(); ForgetNext(); };
             pv.PointerLeft += () => _leaveTimer.Start();
             pv.WindowChosen += h => { pv.Dismiss(); DismissStart(); Win.ActivateOther(h); };
             pv.CloseRequested += h => { Win.CloseWindow(h); pv.LeaveOut(h); ShowPreview(); };   // its card goes at once
@@ -57,7 +57,7 @@ public partial class Taskbar : Window
     string _flyoutText = "";
     TrayHost? _tray;
     TrayFlyout? _trayFlyout;
-    readonly DispatcherTimer _hoverTimer, _leaveTimer;
+    readonly DispatcherTimer _hoverTimer, _leaveTimer, _switchTimer;
     // button drag state
     TaskItem? _pressed;
     FrameworkElement? _pressedEl;
@@ -72,6 +72,10 @@ public partial class Taskbar : Window
 
     TaskItem? _hoverItem;
     FrameworkElement? _hoverEl;
+    // Another button the pointer is crossing while a preview is open. The preview moves to it (or closes) only once the
+    // pointer stays there a moment, so a slanted path from a button up to its preview may cross a neighbour.
+    TaskItem? _nextItem;
+    FrameworkElement? _nextEl;
     nint _hwnd;
     bool _registered;
     int _savedState;
@@ -131,7 +135,14 @@ public partial class Taskbar : Window
         _hoverTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(380) };
         _hoverTimer.Tick += (_, _) => { _hoverTimer.Stop(); ShowPreview(); };
         _leaveTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(260) };
-        _leaveTimer.Tick += (_, _) => { _leaveTimer.Stop(); _hoverItem = null; _preview?.Dismiss(); };
+        _leaveTimer.Tick += (_, _) =>
+        {
+            _leaveTimer.Stop();
+            if (BetweenPreviewAndButton()) { _leaveTimer.Start(); return; }   // still on its way from one to the other
+            _hoverItem = null; _preview?.Dismiss();
+        };
+        _switchTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(200) };
+        _switchTimer.Tick += (_, _) => { _switchTimer.Stop(); SwitchPreview(); };
         _clock = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _clock.Tick += (_, _) => UpdateClock();
         UpdateClock();
@@ -304,7 +315,7 @@ public partial class Taskbar : Window
 
     void OnClosed(object? s, EventArgs e)
     {
-        _refresh.Stop(); _clock.Stop(); _hoverTimer.Stop(); _leaveTimer.Stop();
+        _refresh.Stop(); _clock.Stop(); _hoverTimer.Stop(); _leaveTimer.Stop(); _switchTimer.Stop();
         _preview?.Dismiss(); _preview?.Close();
         if (_registered)
         {
@@ -1027,7 +1038,7 @@ public partial class Taskbar : Window
     {
         _dragging = true;
         _refresh.Stop();                           // no window polling while the slide animations run
-        _hoverTimer.Stop(); _preview?.Dismiss();
+        _hoverTimer.Stop(); ForgetNext(); _preview?.Dismiss();
         TaskList.IsHitTestVisible = false;         // no hover highlights flashing under the ghost
         var el = _pressedEl!;
         var item = _pressed!;
@@ -1058,21 +1069,67 @@ public partial class Taskbar : Window
     {
         if (_dragging) return;
         _leaveTimer.Stop();
-        _hoverItem = ItemOf(s); _hoverEl = (FrameworkElement)s;
+        var item = ItemOf(s);
+        if (_preview?.IsVisible == true && item != _hoverItem)
+        {
+            // Open for another button: the pointer may only be crossing this one on its way up to that preview.
+            _nextItem = item; _nextEl = (FrameworkElement)s;
+            _switchTimer.Stop(); _switchTimer.Start();
+            return;
+        }
+        ForgetNext();
+        _hoverItem = item; _hoverEl = (FrameworkElement)s;
         if (!_hoverItem.IsRunning) { _hoverTimer.Stop(); _preview?.Dismiss(); return; }
-        if (_preview?.IsVisible == true) ShowPreview();          // already open: hop to the new button at once
+        if (_preview?.IsVisible == true) ShowPreview();          // back on its own button
         else { _hoverTimer.Stop(); _hoverTimer.Start(); }
     }
 
     void OnTaskLeave(object s, MouseEventArgs e)
     {
         _hoverTimer.Stop();
+        if (s == _nextEl) ForgetNext();   // only crossed it
         _leaveTimer.Start();
+    }
+
+    /// <summary>The pointer stayed on another button while a preview was open: the preview moves there, or closes when
+    /// that program is not running.</summary>
+    void SwitchPreview()
+    {
+        if (_nextItem is not { } item || _nextEl == null || _preview?.IsVisible != true) return;
+        _hoverItem = item; _hoverEl = _nextEl;
+        ForgetNext();
+        if (item.IsRunning) ShowPreview(); else _preview.Dismiss();
+    }
+
+    void ForgetNext() { _switchTimer.Stop(); _nextItem = null; _nextEl = null; }
+
+    /// <summary>
+    /// The pointer is in the narrow strip between the open preview and its button. It is over neither, so it has left
+    /// both, but it is on its way from one to the other and the preview stays.
+    /// </summary>
+    bool BetweenPreviewAndButton()
+    {
+        if (_preview is not { IsVisible: true } pv || _hoverEl == null || PresentationSource.FromVisual(_hoverEl) == null) return false;
+        if (!Win.GetCursorPos(out var p) || !Win.GetWindowRect(new WindowInteropHelper(pv).Handle, out var r)) return false;
+        var scale = VisualTreeHelper.GetDpi(this).DpiScaleX;
+        var tl = _hoverEl.PointToScreen(new Point());
+        return InGap(new Rect(r.Left, r.Top, r.Right - r.Left, r.Bottom - r.Top),
+                     new Rect(tl.X, tl.Y, _hoverEl.ActualWidth * scale, _hoverEl.ActualHeight * scale), new Point(p.X, p.Y));
+    }
+
+    /// <summary>True when <paramref name="p"/> is in the gap between <paramref name="preview"/> and the
+    /// <paramref name="button"/> below (or above) it, within the preview's width. Screen pixels.</summary>
+    internal static bool InGap(Rect preview, Rect button, Point p)
+    {
+        bool above = preview.Bottom <= button.Top;
+        double top = above ? preview.Bottom : button.Bottom, bottom = above ? button.Top : preview.Top;
+        return top <= bottom && p.X >= preview.Left && p.X < preview.Right && p.Y >= top && p.Y <= bottom;
     }
 
     void ShowPreview()
     {
         if (_hoverItem is not { IsRunning: true } item || _hoverEl == null) return;
+        if (PresentationSource.FromVisual(_hoverEl) == null) return;   // its button went while a timer ran
         var scale = VisualTreeHelper.GetDpi(this).DpiScaleX;
         var tl = _hoverEl.PointToScreen(new Point());
         Preview.Present(item, new Rect(tl.X, tl.Y, _hoverEl.ActualWidth * scale, _hoverEl.ActualHeight * scale), above: _replace);
@@ -1090,7 +1147,7 @@ public partial class Taskbar : Window
     {
         if (_dragging) return;   // that was the end of a drag, not a click
         var item = ItemOf(s);
-        _hoverTimer.Stop(); _preview?.Dismiss();
+        _hoverTimer.Stop(); ForgetNext(); _preview?.Dismiss();
         DismissStart();
         if (!item.IsRunning) { LaunchNew(item); return; }
         if (item.Windows.Count == 1)
@@ -1143,7 +1200,7 @@ public partial class Taskbar : Window
     void OnTaskRight(object s, MouseButtonEventArgs e)
     {
         var item = ItemOf(s);
-        _hoverTimer.Stop(); _preview?.Dismiss();
+        _hoverTimer.Stop(); ForgetNext(); _preview?.Dismiss();
         var m = NewMenu((FrameworkElement)s);
 
         // The Windows 10 jump list: the program's pinned items, its recent ones (frequent folders for File Explorer),

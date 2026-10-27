@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.0.12 (2026-10-26)
+
+### Taskbar
+
+* A taskbar button's preview stays open on the way up to it, even when the path crosses a neighbouring button.
+  Touching another button closed it (when that program was not running) or replaced it at once, so a slightly
+  slanted path from the button to its preview often closed it. Another button now takes over an open preview only
+  once the pointer stays on it for a moment (0.2 s). Moving to another running program's button still shows its
+  preview, after that moment.
+* The thin gap between a preview and the taskbar counts as part of the way between them, so pausing there no
+  longer closes the preview.
+
 ## 2.0.11 (2026-10-26)
 
 ### Taskbar

@@ -415,6 +415,18 @@ static class SelfTest
             Check("preview: it is back the next time (a program asking to save keeps its window)", pv.Showing(item).SequenceEqual(new nint[] { 101, 102 }));
             pv.Close();
         }
+        // ---- the strip between the preview and its button counts as the way between them (measured at 200 %) ----
+        {
+            var preview = new System.Windows.Rect(200, 1390, 896, 322);   // above a bottom bar, 8 px of gap
+            var button = new System.Windows.Rect(600, 1720, 96, 80);
+            Check("preview gap: a pointer in the strip between the preview and its button is on its way",
+                  Taskbar.InGap(preview, button, new System.Windows.Point(650, 1715)) && Taskbar.InGap(preview, button, new System.Windows.Point(300, 1712)));
+            Check("preview gap: over the preview, beside it or on the bar is not the strip",
+                  !Taskbar.InGap(preview, button, new System.Windows.Point(650, 1500)) && !Taskbar.InGap(preview, button, new System.Windows.Point(1200, 1715)) &&
+                  !Taskbar.InGap(preview, button, new System.Windows.Point(650, 1760)));
+            Check("preview gap: below a bar docked at the top as well",
+                  Taskbar.InGap(new System.Windows.Rect(200, 88, 896, 322), new System.Windows.Rect(600, 0, 96, 80), new System.Windows.Point(650, 84)));
+        }
 
         Check("tray: only System32's SecurityHealthSystray.exe counts as Windows Security",
               TrayHost.IsWindowsSecurity(new TrayIcon { Owner = Path.Combine(Environment.SystemDirectory, "SecurityHealthSystray.exe") }) &&
