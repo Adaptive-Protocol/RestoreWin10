@@ -74,6 +74,7 @@ before it becomes known. Use [issues](../../issues) for everything else.
 
 - **Windows key does nothing:** check your keyboard's game mode. Windows also blocks it while an administrator program is in front.
 - **Windows' taskbar stays hidden** after RestoreWin10 was ended in Task Manager: run `RestoreWin10.exe --restore-taskbar`.
+- **RestoreWin10 disappeared:** start it again; `crash.log` then says when the last run ended and whether it was ended from outside.
 - **Something went wrong:** see `%APPDATA%\RestoreWin10\crash.log`.
 
 ## Known limitations

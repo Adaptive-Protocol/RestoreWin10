@@ -415,6 +415,19 @@ static class SelfTest
             Check("preview: it is back the next time (a program asking to save keeps its window)", pv.Showing(item).SequenceEqual(new nint[] { 101, 102 }));
             pv.Close();
         }
+        // ---- a run ended without a trace is dated at the next start (running.txt) ----
+        {
+            var boot = new DateTime(2026, 11, 4, 12, 15, 19);
+            var outside = RunRecord.Describe("pid=4321 started=2026-11-04T12:16:48 seen=2026-11-06T07:31:00", boot);
+            Check("run record: a run gone without a trace while Windows kept running reads as ended from outside, with its times",
+                  outside != null && outside.Contains("4321") && outside.Contains("2026-11-06 07:31:00") && outside.Contains("from outside"));
+            var restart = RunRecord.Describe("pid=4321 started=2026-11-01T09:00:00 seen=2026-11-03T22:10:00", boot);
+            Check("run record: one last seen before Windows started reads as a restart or power loss",
+                  restart != null && restart.Contains("restarted") && !restart.Contains("from outside"));
+            Check("run record: anything not in its exact format is ignored",
+                  RunRecord.Describe("", boot) == null && RunRecord.Describe("pid=1 started=yesterday seen=today", boot) == null &&
+                  RunRecord.Describe("pid=1 started=2026-11-04T12:16:48 seen=2026-11-06T07:31:00 extra=1", boot) == null);
+        }
         // ---- the strip between the preview and its button counts as the way between them (measured at 200 %) ----
         {
             var preview = new System.Windows.Rect(200, 1390, 896, 322);   // above a bottom bar, 8 px of gap

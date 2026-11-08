@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.0.13 (2026-11-08)
+
+### Reliability
+
+* When RestoreWin10 was ended without a trace (by Task Manager's End task, `taskkill /F` or another program),
+  nothing showed when or why it stopped, and the taskbar simply disappeared. RestoreWin10 now keeps a one-line
+  record of its run (`%APPDATA%\RestoreWin10\running.txt`, refreshed every minute) and removes it when it exits
+  normally, when you sign out or shut down, and after a crash it has logged. Found at the next start, the record
+  gives a note in `crash.log`: when the last run was last seen running (to within about a minute) and whether
+  Windows has restarted since (a restart or power loss) or not (ended from outside). A run ended from outside is
+  still not restarted automatically, as that is usually deliberate.
+
 ## 2.0.12 (2026-10-26)
 
 ### Taskbar

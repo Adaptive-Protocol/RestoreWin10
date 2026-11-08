@@ -23,7 +23,8 @@ public partial class App : Application
         // A fault in one handler must not take the whole shell down, and a fatal one must not leave the
         // Windows taskbar hidden. Both are written to %APPDATA%\RestoreWin10\crash.log.
         DispatcherUnhandledException += (_, ex) => { CrashLog.Write("UI thread", ex.Exception); ex.Handled = true; };
-        AppDomain.CurrentDomain.UnhandledException += (_, ex) => { CrashLog.Write("fatal", ex.ExceptionObject as Exception); _taskbar?.EmergencyRestore(); };
+        AppDomain.CurrentDomain.UnhandledException += (_, ex) => { CrashLog.Write("fatal", ex.ExceptionObject as Exception); RunRecord.End(); _taskbar?.EmergencyRestore(); };
+        SessionEnding += (_, _) => RunRecord.End();   // signing out or shutting down is a normal end
 
 #if DEV_BUILD
         if (e.Args.Contains("--selftest")) { Shutdown(SelfTest.Run()); return; }   // checks only: nothing is started or shown
@@ -75,6 +76,8 @@ public partial class App : Application
             Shutdown(1);
             return;
         }
+        // Says in crash.log when the last run was ended without a trace (from outside), and keeps this run's record.
+        RunRecord.Begin();
 
         // The installed v2 removes what v1 left in this account's profile (its program file and Apps entry).
         Setup.RemoveV1Leftovers();
@@ -216,7 +219,84 @@ public partial class App : Application
         _tray?.Dispose();
         _hook?.Dispose();   // restores the normal Windows key behaviour
         _single?.Dispose();
+        RunRecord.End();
         base.OnExit(e);
+    }
+}
+
+/// <summary>
+/// One line about the running copy in %APPDATA%\RestoreWin10\running.txt: its process, when it started and when it was
+/// last seen running (refreshed every minute). Exiting normally, Windows signing out or shutting down, and a crash
+/// (already in crash.log) remove it. Still there at the next start, it means the last run ended some other way, most
+/// likely from outside (Task Manager's End task, taskkill /F), which leaves no other trace: crash.log then says when.
+/// </summary>
+static class RunRecord
+{
+    const string FileName = "running.txt", Format = "yyyy-MM-dd'T'HH:mm:ss";
+    static readonly object Gate = new();
+    static Timer? _beat;
+    static string _started = "";
+    static bool _ended;
+
+    public static void Begin()
+    {
+        try
+        {
+            // Written by this account's own programs, so read as untrusted text: small, and only our exact format counts.
+            var file = Identity.DataFile(FileName);
+            if (System.IO.File.Exists(file) && new System.IO.FileInfo(file).Length <= 512 &&
+                Describe(System.IO.File.ReadAllText(file), DateTime.Now - TimeSpan.FromMilliseconds(Environment.TickCount64)) is { } note)
+                CrashLog.Note(note);
+        }
+        catch { }
+        _started = DateTime.Now.ToString(Format, System.Globalization.CultureInfo.InvariantCulture);
+        Beat();
+        _beat = new Timer(_ => Beat(), null, TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1));
+    }
+
+    public static void End()
+    {
+        lock (Gate)
+        {
+            if (_ended) return;
+            _ended = true;
+            _beat?.Dispose();
+            try { System.IO.File.Delete(Identity.DataFile(FileName)); } catch { }
+        }
+    }
+
+    static void Beat()
+    {
+        lock (Gate)
+        {
+            if (_ended) return;
+            try
+            {
+                System.IO.Directory.CreateDirectory(Identity.DataDir);
+                var file = Identity.DataFile(FileName);
+                var now = DateTime.Now.ToString(Format, System.Globalization.CultureInfo.InvariantCulture);
+                System.IO.File.WriteAllText(file + ".tmp", $"pid={Environment.ProcessId} started={_started} seen={now}");
+                System.IO.File.Move(file + ".tmp", file, overwrite: true);   // never half-written
+            }
+            catch { }
+        }
+    }
+
+    /// <summary>The crash.log note for a record the last run left behind, or null when it is not in our format.</summary>
+    internal static string? Describe(string record, DateTime windowsStarted)
+    {
+        var parts = record.Trim().Split(' ');
+        if (parts.Length != 3 || !parts[0].StartsWith("pid=") || !uint.TryParse(parts[0][4..], out var pid) ||
+            !parts[1].StartsWith("started=") || !Parse(parts[1][8..], out var started) ||
+            !parts[2].StartsWith("seen=") || !Parse(parts[2][5..], out var seen)) return null;
+        var why = seen < windowsStarted
+            ? "Windows has started again since then, so the PC was most likely restarted, shut down or lost power while it ran."
+            : "Windows has not restarted since then, so it was ended from outside (Task Manager's End task, taskkill /F or another program).";
+        return $"the last run (process {pid}, started {started:yyyy-MM-dd HH:mm:ss}) did not exit normally. It was last seen running at " +
+               $"{seen:yyyy-MM-dd HH:mm:ss} and ended within about a minute after that. {why}";
+
+        static bool Parse(string s, out DateTime at) =>
+            DateTime.TryParseExact(s, Format, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out at);
     }
 }
 
