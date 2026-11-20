@@ -146,6 +146,19 @@ static class SelfTest
         Check("sign-in task: 'start at sign-in' off disables only the sign-in trigger (the crash restart stays)",
               off.SelectSingleNode("//t:LogonTrigger/t:Enabled", ns)?.InnerText == "false" &&
               off.SelectSingleNode("//t:EventTrigger/t:Enabled", ns)?.InnerText == "true");
+        var revive = new System.Xml.XmlDocument();
+        revive.LoadXml(SignInTask.ReviveXml(@"C:\Program Files\RestoreWin10\RestoreWin10.exe", user));
+        Check("revive task: every 2 minutes, the Program Files copy with --replace --revive, this account, not elevated, one at a time",
+              revive.SelectSingleNode("//t:TimeTrigger/t:Repetition/t:Interval", ns)?.InnerText == "PT2M" &&
+              revive.SelectSingleNode("//t:TimeTrigger/t:Enabled", ns)?.InnerText == "true" &&
+              revive.SelectSingleNode("//t:Exec/t:Command", ns)?.InnerText == @"C:\Program Files\RestoreWin10\RestoreWin10.exe" &&
+              revive.SelectSingleNode("//t:Exec/t:Arguments", ns)?.InnerText == "--replace --revive" &&
+              revive.SelectSingleNode("//t:Principal/t:UserId", ns)?.InnerText == user.Value &&
+              revive.SelectSingleNode("//t:Principal/t:RunLevel", ns)?.InnerText == "LeastPrivilege" &&
+              revive.SelectSingleNode("//t:Settings/t:MultipleInstancesPolicy", ns)?.InnerText == "IgnoreNew");
+        var reviveOff = new System.Xml.XmlDocument();
+        reviveOff.LoadXml(SignInTask.ReviveXml(@"C:\Program Files\RestoreWin10\RestoreWin10.exe", user, signIn: false));
+        Check("revive task: off when 'start at sign-in' is off", reviveOff.SelectSingleNode("//t:TimeTrigger/t:Enabled", ns)?.InnerText == "false");
 
         // ---- the install window: which version replaces which, and when it opens ----
         var v207 = new System.Version(2, 0, 7); var v208 = new System.Version(2, 0, 8);
@@ -427,6 +440,55 @@ static class SelfTest
             Check("run record: anything not in its exact format is ignored",
                   RunRecord.Describe("", boot) == null && RunRecord.Describe("pid=1 started=yesterday seen=today", boot) == null &&
                   RunRecord.Describe("pid=1 started=2026-11-04T12:16:48 seen=2026-11-06T07:31:00 extra=1", boot) == null);
+
+            // The revive task's decision, at 07:35 (the record was last refreshed at 07:31: the run is gone).
+            var rec = "pid=4321 started=2026-11-04T12:16:48 seen=2026-11-06T07:31:00";
+            var at = new DateTime(2026, 11, 6, 7, 35, 0);
+            Check("revive: a run ended from outside since Windows started is started again",
+                  RunRecord.Decide(rec, boot, at, 0) == RunRecord.Revival.Yes);
+            Check("revive: not while its record is still being refreshed (it is running)",
+                  RunRecord.Decide(rec, boot, new DateTime(2026, 11, 6, 7, 32, 0), 0) == RunRecord.Revival.No);
+            Check("revive: not for a run from before Windows started (the sign-in task starts it)",
+                  RunRecord.Decide("pid=1 started=2026-11-01T09:00:00 seen=2026-11-03T22:10:00", boot, at, 0) == RunRecord.Revival.No);
+            Check("revive: not without its record (a normal exit, an installer, a logged crash) or with anything else in it",
+                  RunRecord.Decide("", boot, at, 0) == RunRecord.Revival.No && RunRecord.Decide("pid=1 started=x seen=y", boot, at, 0) == RunRecord.Revival.No);
+            Check("revive: after three ends from outside within 30 minutes it stays off",
+                  RunRecord.Decide(rec, boot, at, 2) == RunRecord.Revival.Yes && RunRecord.Decide(rec, boot, at, 3) == RunRecord.Revival.Capped);
+            var notes = new[]
+            {
+                "2026-11-06 07:00:00 [note] the last run (process 1, started 2026-11-06 06:00:00) did not exit normally. It was last seen running at 2026-11-06 06:59:00 and ended within about a minute after that. Windows has not restarted since then, so it was ended from outside (Task Manager's End task, taskkill /F or another program).",
+                "2026-11-06 07:20:00 [note] the last run (process 2, started 2026-11-06 07:01:00) did not exit normally. It was last seen running at 2026-11-06 07:19:00 and ended within about a minute after that. Windows has started again since then, so the PC was most likely restarted, shut down or lost power while it ran.",
+                "2026-11-06 07:30:00 [note] the last run (process 3, started 2026-11-06 07:21:00) did not exit normally. It was last seen running at 2026-11-06 07:29:00 and ended within about a minute after that. Windows has not restarted since then, so it was ended from outside (Task Manager's End task, taskkill /F or another program).",
+                "2026-11-06 07:31:00 [fatal] System.InvalidOperationException",
+            };
+            Check("revive: counts only ends from outside within the last 30 minutes (not restarts, crashes or older ones)",
+                  CrashLog.CountForcedEnds(notes, at, TimeSpan.FromMinutes(30)) == 1 && CrashLog.CountForcedEnds(notes, at, TimeSpan.FromMinutes(40)) == 2);
+        }
+        // ---- the self-check sees files mapped into this process, and leaves Windows, .NET and its own folder out ----
+        {
+            var probe = Path.Combine(Path.GetTempPath(), $"RestoreWin10.SelfTest.{Environment.ProcessId}.bin");
+            try
+            {
+                File.WriteAllBytes(probe, new byte[4096]);
+                using (var map = System.IO.MemoryMappedFiles.MemoryMappedFile.CreateFromFile(probe, FileMode.Open, null, 0, System.IO.MemoryMappedFiles.MemoryMappedFileAccess.Read))
+                using (var view = map.CreateViewAccessor(0, 0, System.IO.MemoryMappedFiles.MemoryMappedFileAccess.Read))
+                {
+                    var mapped = ModuleWatch.Mapped();
+                    Check("self-check: a file mapped as data is seen, with its drive-letter path",
+                          mapped.Any(m => !m.image && string.Equals(m.path, probe, StringComparison.OrdinalIgnoreCase)));
+                    Check("self-check: DLLs are seen as images (kernel32.dll)",
+                          mapped.Any(m => m.image && m.path.EndsWith(@"\kernel32.dll", StringComparison.OrdinalIgnoreCase)));
+                }
+            }
+            finally { try { File.Delete(probe); } catch { } }
+            Check("self-check: Windows, .NET and its own folder are expected; anything else is noted",
+                  ModuleWatch.Ignored(Path.Combine(Environment.SystemDirectory, "kernel32.dll")) &&
+                  ModuleWatch.Ignored(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), @"dotnet\shared\x.dll")) &&
+                  ModuleWatch.Ignored(Path.Combine(AppContext.BaseDirectory, "RestoreWin10.dll")) &&
+                  ModuleWatch.Ignored(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), @"Microsoft\Windows\Explorer\iconcache_48.db")) &&
+                  ModuleWatch.Ignored(@"C:\$Extend\$Deleted\00AD000000014AB6047B27E0") &&
+                  !ModuleWatch.Ignored(@"C:\Program Files\Common Files\microsoft shared\ClickToRun\C2R64.dll") &&
+                  !ModuleWatch.Ignored(probe));
         }
         // ---- the strip between the preview and its button counts as the way between them (measured at 200 %) ----
         {

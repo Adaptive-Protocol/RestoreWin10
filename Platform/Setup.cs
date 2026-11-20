@@ -488,10 +488,16 @@ static class Setup
 /// setting does not cover this: the Phase 8 crash test showed it only applies when the task cannot start at all.)
 /// After three crashes within ten minutes the shell gives the Windows taskbar back and stays off (App.OnStartup).
 /// </para>
+/// <para>
+/// A second task, "RestoreWin10 Revive", covers what leaves no crash record: a program ended from outside (an Office
+/// update closing programs while the PC is locked or a Remote Desktop session is disconnected, End task, taskkill /F).
+/// Every 2 minutes it runs <c>--replace --revive</c>, which starts RestoreWin10 only when its last run ended that way since
+/// Windows started (RunRecord.ReviveWanted) and otherwise exits before any window or WPF loads.
+/// </para>
 /// </summary>
 static class SignInTask
 {
-    const string TaskName = Identity.Product;
+    const string TaskName = Identity.Product, ReviveTaskName = Identity.Product + " Revive";
     static readonly Guid TaskSchedulerClass = new("0f87369f-a4e5-4cfc-bd3e-73e6154572dd");   // by class id, not by a name the registry maps
     const int TASK_CREATE_OR_UPDATE = 6, TASK_LOGON_INTERACTIVE_TOKEN = 3;
 
@@ -508,14 +514,21 @@ static class SignInTask
     {
         dynamic root = RootFolder();
         DeleteIfPresent(root, TaskName);   // v1's per-user task, or an earlier v2 one
-        // Administrators and SYSTEM may change it; this account may read and run it, but not change what it starts.
+        DeleteIfPresent(root, ReviveTaskName);
+        // Administrators and SYSTEM may change them; this account may read and run them, but not change what they start.
         string security = $"D:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;FRFX;;;{user.Value})";
         root.RegisterTask(TaskName, Xml(exe, user, signIn), TASK_CREATE_OR_UPDATE, null, null, TASK_LOGON_INTERACTIVE_TOKEN, security);
+        root.RegisterTask(ReviveTaskName, ReviveXml(exe, user, signIn), TASK_CREATE_OR_UPDATE, null, null, TASK_LOGON_INTERACTIVE_TOKEN, security);
     }
 
     public static void Run() => RootFolder().GetTask(TaskName).Run(null);
 
-    public static void Delete() => DeleteIfPresent(RootFolder(), TaskName);
+    public static void Delete()
+    {
+        var root = RootFolder();
+        DeleteIfPresent(root, ReviveTaskName);
+        DeleteIfPresent(root, TaskName);
+    }
 
     /// <summary>
     /// Deletes a task if there is one. Task Scheduler answers "no such task" with 0x80070002, which .NET raises as
@@ -557,6 +570,36 @@ static class SignInTask
               </Settings>
               <Actions Context="Author"><Exec>
                 <Command>{SecurityElement.Escape(exe)}</Command><Arguments>--replace</Arguments>
+                <WorkingDirectory>{SecurityElement.Escape(Environment.SystemDirectory)}</WorkingDirectory>
+              </Exec></Actions>
+            </Task>
+            """;
+    }
+
+    /// <summary>The revive task: every 2 minutes while this account is signed in, only if RestoreWin10 starts at sign-in.
+    /// One instance at a time; while one it started is running as the shell, the checks are skipped.</summary>
+    internal static string ReviveXml(string exe, SecurityIdentifier user, bool signIn = true)
+    {
+        string sid = SecurityElement.Escape(user.Value)!;
+        string enabled = signIn ? "true" : "false";
+        return $"""
+            <?xml version="1.0" encoding="UTF-16"?>
+            <Task version="1.3" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+              <RegistrationInfo><Description>Starts {TaskName} again when another program ended it (it checks every 2 minutes and otherwise does nothing).</Description></RegistrationInfo>
+              <Triggers>
+                <TimeTrigger><Enabled>{enabled}</Enabled><StartBoundary>2026-01-01T00:00:00</StartBoundary><Repetition><Interval>PT2M</Interval></Repetition></TimeTrigger>
+              </Triggers>
+              <Principals><Principal id="Author"><UserId>{sid}</UserId><LogonType>InteractiveToken</LogonType><RunLevel>LeastPrivilege</RunLevel></Principal></Principals>
+              <Settings>
+                <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+                <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+                <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+                <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+                <Priority>4</Priority>
+                <IdleSettings><StopOnIdleEnd>false</StopOnIdleEnd><RestartOnIdle>false</RestartOnIdle></IdleSettings>
+              </Settings>
+              <Actions Context="Author"><Exec>
+                <Command>{SecurityElement.Escape(exe)}</Command><Arguments>--replace --revive</Arguments>
                 <WorkingDirectory>{SecurityElement.Escape(Environment.SystemDirectory)}</WorkingDirectory>
               </Exec></Actions>
             </Task>

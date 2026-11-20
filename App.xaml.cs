@@ -237,6 +237,7 @@ static class RunRecord
     static Timer? _beat;
     static string _started = "";
     static bool _ended;
+    static int _beats;
 
     public static void Begin()
     {
@@ -245,7 +246,7 @@ static class RunRecord
             // Written by this account's own programs, so read as untrusted text: small, and only our exact format counts.
             var file = Identity.DataFile(FileName);
             if (System.IO.File.Exists(file) && new System.IO.FileInfo(file).Length <= 512 &&
-                Describe(System.IO.File.ReadAllText(file), DateTime.Now - TimeSpan.FromMilliseconds(Environment.TickCount64)) is { } note)
+                Describe(System.IO.File.ReadAllText(file), WindowsStarted) is { } note)
                 CrashLog.Note(note);
         }
         catch { }
@@ -279,24 +280,74 @@ static class RunRecord
                 System.IO.File.Move(file + ".tmp", file, overwrite: true);   // never half-written
             }
             catch { }
+            // From the first refresh on (a minute in): by then the windows and their icons have loaded.
+            if (_beats++ > 0) ModuleWatch.Check(firstMinute: _beats == 2);
         }
+    }
+
+    static DateTime WindowsStarted => DateTime.Now - TimeSpan.FromMilliseconds(Environment.TickCount64);
+
+    public enum Revival { No, Yes, Capped }
+
+    /// <summary>
+    /// For the revive task (<c>--revive</c>, every 2 minutes): true when the last run was ended from outside since Windows
+    /// started. Its record is then still there but has not been refreshed for over 90 seconds (a running copy refreshes it
+    /// every minute). Exit from the tray, an installer closing it, signing out and a logged crash all remove the record, so
+    /// none of those is revived (a crash is restarted by the sign-in task itself). After three ends from outside within
+    /// 30 minutes it stays off and says so, rather than being ended and started over and over.
+    /// </summary>
+    public static bool ReviveWanted()
+    {
+        try
+        {
+            var file = Identity.DataFile(FileName);
+            if (!System.IO.File.Exists(file) || new System.IO.FileInfo(file).Length > 512) return false;
+            var record = System.IO.File.ReadAllText(file);
+            var log = Identity.DataFile("crash.log");
+            int recent = System.IO.File.Exists(log) ? CrashLog.CountForcedEnds(System.IO.File.ReadLines(log), DateTime.Now, CapWindow) : 0;
+            var verdict = Decide(record, WindowsStarted, DateTime.Now, recent);
+            if (verdict == Revival.Capped)
+            {
+                if (Describe(record, WindowsStarted) is { } note) CrashLog.Note(note);
+                CrashLog.Note($"RestoreWin10 was ended from outside {ReviveCap} times within {CapWindow.TotalMinutes:0} minutes, so it was not " +
+                              "started again. Start it from Win+R or sign in again.");
+                System.IO.File.Delete(file);   // said once; the next checks find nothing to do
+            }
+            return verdict == Revival.Yes;
+        }
+        catch { return false; }
+    }
+
+    const int ReviveCap = 3;
+    static readonly TimeSpan Stale = TimeSpan.FromSeconds(90), CapWindow = TimeSpan.FromMinutes(30);
+
+    internal static Revival Decide(string record, DateTime windowsStarted, DateTime now, int recentForcedEnds)
+    {
+        if (!TryParse(record, out _, out _, out var seen) || seen < windowsStarted || now - seen < Stale) return Revival.No;
+        return recentForcedEnds >= ReviveCap ? Revival.Capped : Revival.Yes;
+    }
+
+    static bool TryParse(string record, out uint pid, out DateTime started, out DateTime seen)
+    {
+        pid = 0; started = seen = default;
+        var parts = record.Trim().Split(' ');
+        return parts.Length == 3 && parts[0].StartsWith("pid=") && uint.TryParse(parts[0][4..], out pid) &&
+               parts[1].StartsWith("started=") && Parse(parts[1][8..], out started) &&
+               parts[2].StartsWith("seen=") && Parse(parts[2][5..], out seen);
+
+        static bool Parse(string s, out DateTime at) =>
+            DateTime.TryParseExact(s, Format, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out at);
     }
 
     /// <summary>The crash.log note for a record the last run left behind, or null when it is not in our format.</summary>
     internal static string? Describe(string record, DateTime windowsStarted)
     {
-        var parts = record.Trim().Split(' ');
-        if (parts.Length != 3 || !parts[0].StartsWith("pid=") || !uint.TryParse(parts[0][4..], out var pid) ||
-            !parts[1].StartsWith("started=") || !Parse(parts[1][8..], out var started) ||
-            !parts[2].StartsWith("seen=") || !Parse(parts[2][5..], out var seen)) return null;
+        if (!TryParse(record, out var pid, out var started, out var seen)) return null;
         var why = seen < windowsStarted
             ? "Windows has started again since then, so the PC was most likely restarted, shut down or lost power while it ran."
             : "Windows has not restarted since then, so it was ended from outside (Task Manager's End task, taskkill /F or another program).";
         return $"the last run (process {pid}, started {started:yyyy-MM-dd HH:mm:ss}) did not exit normally. It was last seen running at " +
                $"{seen:yyyy-MM-dd HH:mm:ss} and ended within about a minute after that. {why}";
-
-        static bool Parse(string s, out DateTime at) =>
-            DateTime.TryParseExact(s, Format, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out at);
     }
 }
 
@@ -334,7 +385,14 @@ static class CrashLog
 
     /// <summary>Lines of crash.log that start a fatal entry ("yyyy-MM-dd HH:mm:ss [fatal]") within the window.</summary>
     internal static int CountFatal(IEnumerable<string> lines, DateTime now, TimeSpan window) =>
-        lines.Count(l => l.Length > 27 && l.AsSpan(19).StartsWith(" [fatal]") &&
+        Count(lines, rest => rest.StartsWith(" [fatal]"), now, window);
+
+    /// <summary>Notes within the window saying a run was ended from outside (RunRecord).</summary>
+    internal static int CountForcedEnds(IEnumerable<string> lines, DateTime now, TimeSpan window) =>
+        Count(lines, rest => rest.StartsWith(" [note] the last run") && rest.Contains("from outside"), now, window);
+
+    static int Count(IEnumerable<string> lines, Func<string, bool> kind, DateTime now, TimeSpan window) =>
+        lines.Count(l => l.Length > 27 && kind(l[19..]) &&
                          DateTime.TryParseExact(l[..19], "yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture,
                                                 System.Globalization.DateTimeStyles.None, out var at) &&
                          at <= now && now - at <= window);

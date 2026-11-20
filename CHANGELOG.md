@@ -1,5 +1,21 @@
 # Changelog
 
+## 2.0.14 (2026-11-19)
+
+### Reliability
+
+* RestoreWin10 comes back by itself after another program ends it. Office's Click-to-Run updates ended it three
+  times (and other programs, such as Firefox, once), which leaves no crash record, so the taskbar stayed gone until
+  it was started by hand. A second scheduled task, "RestoreWin10 Revive", checks every 2 minutes while you are
+  signed in and starts RestoreWin10 only when its last run was ended from outside since Windows started (its
+  `running.txt` record is still there but no longer refreshed). Exit from the tray, `--exit`, an update, signing out
+  and crashes are left alone (crashes are restarted by the sign-in task, as before). After three ends from outside
+  within 30 minutes it stays off and says so in `crash.log`. When there is nothing to do, the check exits in about
+  50 ms, before any window loads. It is off when "Start RestoreWin10 when I sign in" is off, and uninstalling
+  removes it.
+* A self-check notes in `crash.log` any file from outside Windows and .NET that gets loaded or mapped into
+  RestoreWin10 (one line for its first minute, then a line for anything new), to show what an update ends it for.
+
 ## 2.0.13 (2026-11-08)
 
 ### Reliability

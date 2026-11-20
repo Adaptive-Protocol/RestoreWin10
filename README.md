@@ -61,6 +61,8 @@
   must be on this PC, and web addresses and network paths are refused
 * DLLs and .NET are loaded only from Windows' and .NET's own folders; .NET startup hooks are ignored
 * Its single-instance lock and signals can be opened only by your account
+* Its two scheduled tasks (start at sign-in, and start again after a crash or after another program ended it) run with
+  your normal rights; only administrators can change them
 * Settings, jump lists and program task lists are size-limited and validated before use
 * No network access at all
 
@@ -74,7 +76,7 @@ before it becomes known. Use [issues](../../issues) for everything else.
 
 - **Windows key does nothing:** check your keyboard's game mode. Windows also blocks it while an administrator program is in front.
 - **Windows' taskbar stays hidden** after RestoreWin10 was ended in Task Manager: run `RestoreWin10.exe --restore-taskbar`.
-- **RestoreWin10 disappeared:** start it again; `crash.log` then says when the last run ended and whether it was ended from outside.
+- **RestoreWin10 disappeared:** it comes back within about 3 minutes (after three times in 30 minutes it stays off until you start it); `crash.log` says when it was ended and whether from outside.
 - **Something went wrong:** see `%APPDATA%\RestoreWin10\crash.log`.
 
 ## Known limitations

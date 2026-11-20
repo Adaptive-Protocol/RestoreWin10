@@ -25,6 +25,8 @@ static class Program
         Hardening.Apply(trustOwnFolder: !setup);
         if (wizard) return Setup.Wizard();
         if (setup) return Setup.Run(args);
+        // The revive task checks every 2 minutes; nearly always there is nothing to do, so decide before WPF loads.
+        if (args.Contains("--revive") && !RunRecord.ReviveWanted()) return 0;
 
         var app = new App();
         app.InitializeComponent();
